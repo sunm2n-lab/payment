@@ -1,0 +1,50 @@
+name: Task
+description: 문서, 테스트, 리팩터링 또는 저장소 관리 작업을 정의합니다.
+body:
+  - type: dropdown
+    id: task-type
+    attributes:
+      label: 작업 유형
+      description: 작업의 주된 목적을 선택해 주세요.
+      options:
+        - docs
+        - test
+        - refactor
+        - chore
+    validations:
+      required: true
+
+  - type: textarea
+    id: background
+    attributes:
+      label: 배경
+      description: 이 작업이 필요한 이유를 작성해 주세요.
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: 작업 내용
+      description: 수행할 작업을 체크리스트로 작성해 주세요.
+      placeholder: |
+        - [ ] 작업 1
+        - [ ] 작업 2
+    validations:
+      required: true
+
+  - type: textarea
+    id: done
+    attributes:
+      label: 완료 조건
+      description: 작업 완료를 확인할 수 있는 조건을 작성해 주세요.
+    validations:
+      required: true
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: 참고 사항
+      description: 관련 문서, 이슈, 제약 또는 제외 범위가 있다면 작성해 주세요.
+    validations:
+      required: false

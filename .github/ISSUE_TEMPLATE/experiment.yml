@@ -1,0 +1,75 @@
+name: Experiment
+description: 결제·동시성 문제를 재현하고 해결책을 비교합니다.
+title: "experiment: "
+labels:
+  - "type: experiment"
+body:
+  - type: input
+    id: scenario
+    attributes:
+      label: 시나리오
+      description: SCENARIO.md의 관련 단계나 실험 이름을 작성해 주세요.
+      placeholder: "S1. 중복 승인"
+    validations:
+      required: true
+
+  - type: textarea
+    id: prerequisites
+    attributes:
+      label: 전제 조건
+      description: 스키마 버전, 구현 상태, 격리 수준, 인덱스와 잠금 조건을 작성해 주세요.
+    validations:
+      required: true
+
+  - type: textarea
+    id: hypothesis
+    attributes:
+      label: 가설
+      description: 예상하는 문제와 원인을 작성해 주세요.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: 재현 방법
+      description: 요청, 데이터, 동기화 지점 등 실험 절차를 작성해 주세요.
+    validations:
+      required: true
+
+  - type: textarea
+    id: observations
+    attributes:
+      label: 관찰 항목
+      description: DB 상태, 로그, 락, 지연 시간 등 수집할 증거를 작성해 주세요.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 개선 후보와 비교 기준
+      description: 비교할 해결책과 선택 기준을 작성해 주세요.
+    validations:
+      required: true
+
+  - type: textarea
+    id: invariants
+    attributes:
+      label: 검증할 불변식
+      description: 실험 전후에 반드시 유지되어야 하는 조건을 작성해 주세요.
+      placeholder: 잔액과 원장 합계 일치, 중복 승인 없음 등
+    validations:
+      required: true
+
+  - type: textarea
+    id: done
+    attributes:
+      label: 완료 조건
+      description: 재현, 원인 확인, 개선 검증의 완료 기준을 체크리스트로 작성해 주세요.
+      placeholder: |
+        - [ ] 문제를 결정적으로 재현한다.
+        - [ ] 관찰 결과로 원인을 설명한다.
+        - [ ] 개선 후 불변식과 회귀 테스트를 검증한다.
+    validations:
+      required: true
