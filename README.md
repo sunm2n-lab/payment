@@ -19,3 +19,12 @@
 ```bash
 ./gradlew test
 ```
+
+## 코드 스타일
+
+Spotless + google-java-format 을 사용한다.
+
+```bash
+./gradlew spotlessApply   # 포맷 자동 적용 (커밋 전)
+./gradlew spotlessCheck   # 포맷 검사만 (CI와 동일)
+```
