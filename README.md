@@ -28,3 +28,12 @@ Spotless + google-java-format 을 사용한다.
 ./gradlew spotlessApply   # 포맷 자동 적용 (커밋 전)
 ./gradlew spotlessCheck   # 포맷 검사만 (CI와 동일)
 ```
+
+## CI
+
+PR 생성·갱신과 main 푸시 시 GitHub Actions(`.github/workflows/ci.yml`)가 다음 순서로 검증한다.
+
+1. `spotlessCheck` — 코드 포맷
+2. `test` — 단위·통합 테스트
+
+실패한 테스트는 PR 체크에 주석으로 표시되고, 실패 시 `build/reports/tests` 가 artifact로 올라간다.
