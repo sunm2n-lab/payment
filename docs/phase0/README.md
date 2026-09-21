@@ -151,13 +151,66 @@ SELECT @@transaction_isolation  ->  REPEATABLE-READ
 - DB 는 테스트 간에 오염되므로 격리는 **매 테스트 전 TRUNCATE + 시드 재삽입 + Fake 카운터 리셋**이 담당한다. `@Transactional` 롤백은 쓰지 않는다 — 동시성 테스트가 작업 스레드별 독립 트랜잭션을 써야 하기 때문이다 (SCENARIO 96행)
 - 공유 DB 를 TRUNCATE 로 정리하므로 JUnit 병렬 실행을 켜지 않고 Gradle `maxParallelForks` 도 1 로 명시했다
 
-## 7. 완료 기준 진행 상황
+## 7. k6 부하 결과
+
+`load/create-confirm.js` — 서로 다른 CARD 결제를 **생성 → 승인**하는 루프, 100 VU / 1분. 서버는 SQL 로깅을 끈 `load` 프로파일로 띄웠다.
+
+```bash
+./gradlew bootRun --args='--spring.profiles.active=load'
+k6 run -e API_KEY=mk_test_merchant_1 -e BASE_URL=http://localhost:8080 load/create-confirm.js
+```
+
+### 결과 (k6 v2.2.0, 2026-09-21)
+
+| 항목 | 값 |
+|---|---|
+| **`http_req_failed`** | **0.00%** (0 / 108,088) ✓ `rate==0` |
+| **`checks`** | **100.00%** (216,176 / 216,176) ✓ `rate==1` |
+| 처리량 | 1,799 req/s · 900 iterations/s |
+| 완료 결제 | 54,044건 (생성 + 승인) |
+| `http_req_duration` | avg 55.5ms · med 53.1ms · p90 74.8ms · p95 82.7ms · max 379.9ms |
+
+threshold 를 모두 통과해 k6 가 **exit 0** 으로 끝났다.
+
+### DB 확인
+
+| 항목 | 값 |
+|---|---|
+| `payment` 상태 | `DONE` 54,044건 (그 외 없음) |
+| `card_approval_no` | 54,044건 **모두 고유** |
+| `wallet_ledger` | 0건 (CARD 만 쓰므로 지갑을 건드리지 않는다) |
+| 불변식 1·2 위반 | **0건** |
+
+승인번호가 모두 고유하다는 것은 **저장된 값이 겹치지 않았다**는 뜻이지, 결제당 카드사 호출이 한 번이었다는 증명은 아니다. 여러 번 호출하고 마지막 번호만 저장해도 DB 결과는 똑같다. 호출 횟수는 Fake 카운터로만 셀 수 있고, 부하 실행은 별도 프로세스라 여기서 읽을 수 없다. **"결제당 승인 1회"는 `PaymentFlowApiTest.cardHappyPath` 가 `getApproveCount() == 1` 로 검증한다.**
+
+위 숫자는 부하 실행 **직후**에 찍은 것이다. 이어서 아래 threshold 확인용 짧은 실행을 돌렸으므로 지금 로컬 DB 의 건수는 이보다 많다.
+
+### threshold 가 실제로 막는지
+
+합격 기준이 "통과만 하는 기준"이 아닌지 확인했다. 잘못된 API 키로 같은 스크립트를 돌리면 401 이 쌓여 threshold 를 위반하고 k6 가 **exit 99** 로 끝난다. 정상 실행은 exit 0 이다.
+
+```
+k6 run -e API_KEY=mk_test_merchant_1 ... → exit 0
+k6 run -e API_KEY=wrong_key ...          → exit 99
+```
+
+4xx 도 실패로 세는 이유가 여기에 있다. 이 부하는 정상 경로만 타므로 4xx 가 나올 이유가 없고, 나온다면 그것도 결함(시드 키 오류, 검증 실패, 상태 불일치)이다.
+
+## 8. 완료 기준
+
+`./gradlew spotlessCheck test` — **69개 전부 green**.
 
 - [x] FK **0건** — `SchemaConstraintTest.noForeignKeys`
 - [x] `payment` 에 `merchant_id`/`order_id` 인덱스 없음 — `SchemaConstraintTest.paymentHasNoSearchIndexes`
 - [x] 세션 격리 수준 `REPEATABLE-READ` — `IsolationLevelTest`
-- [x] `Invariants` 3개 헬퍼 + 시드 상태 검증 — `SeedFixtureTest`
-- [x] naive 서비스와 v1 API — 서비스 계층 테스트 26개 + `local` 프로파일 수동 스모크
-- [ ] 정상 흐름 통합 테스트 (생성 → 승인 → 부분취소 → 조회, CARD/MONEY)
-- [ ] 실패 규약 테스트 (401/404/400/409 + 거절 후 부작용 없음)
-- [ ] k6 100 VU 1분, `http_req_failed` 0 / `checks` 100%
+- [x] `Invariants` 3개 유지 — `SeedFixtureTest`, `PaymentFlowApiTest`, `FailureContractApiTest`, `AmountBoundaryTest`
+- [x] naive 서비스와 v1 API — 서비스 계층 테스트 29개 + `local` 프로파일 수동 스모크
+- [x] 정상 흐름 통합 테스트 (생성 → 승인 → 부분취소 → 조회, CARD/MONEY) — `PaymentFlowApiTest`
+- [x] 실패 규약 테스트 (401/404/400/409 + 거절 후 부작용 없음) — `FailureContractApiTest`
+- [x] k6 100 VU 1분, `http_req_failed` 0 / `checks` 100% — 7절
+
+FK·인덱스 부재 테스트는 "제대로 만들지 않았음"을 검증하는, 이 프로젝트 특유의 완료 기준이다. 수동 쿼리가 아니라 테스트로 두어야 이후 시나리오의 마이그레이션이 이 전제를 조용히 깨지 못한다. 음수 잔액이 여전히 저장 가능한지 확인하는 `AmountBoundaryTest.negativeBalanceStaysObservable` 도 같은 성격이다.
+
+## 9. 다음 단계
+
+**S1(중복 승인)** 으로 간다. 같은 `paymentKey` 로 confirm 을 N개 보내면 모두 READY 를 읽고 승인에 성공하는 것을 재현하고, 조건부 UPDATE(`WHERE status='READY'`)로 고친다. 그때 `PaymentService` 에서 confirm 구현을 인터페이스로 추출해 naive/CAS 두 구현을 공존시킨다.
