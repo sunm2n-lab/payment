@@ -6,8 +6,6 @@ import com.sunm2n.payment.support.AbstractIntegrationTest;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.jdbc.core.JdbcTemplate;
 
 /**
  * "제대로 만들지 않았음"을 검증하는 테스트.
@@ -17,8 +15,6 @@ import org.springframework.jdbc.core.JdbcTemplate;
  * <p>컨텍스트가 뜬 것 자체가 {@code spring.jpa.hibernate.ddl-auto=validate} 통과, 즉 엔티티 매핑과 V1 스키마가 일치한다는 뜻이다.
  */
 class SchemaConstraintTest extends AbstractIntegrationTest {
-
-  @Autowired private JdbcTemplate jdbcTemplate;
 
   @Test
   @DisplayName("FK 가 하나도 없다 - 원장 INSERT 의 FK 검사 락이 S1/S2 관찰에 섞이지 않아야 한다")
