@@ -198,13 +198,13 @@ k6 run -e API_KEY=wrong_key ...          → exit 99
 
 ## 8. 완료 기준
 
-`./gradlew spotlessCheck test` — **68개 전부 green**.
+`./gradlew spotlessCheck test` — **69개 전부 green**.
 
 - [x] FK **0건** — `SchemaConstraintTest.noForeignKeys`
 - [x] `payment` 에 `merchant_id`/`order_id` 인덱스 없음 — `SchemaConstraintTest.paymentHasNoSearchIndexes`
 - [x] 세션 격리 수준 `REPEATABLE-READ` — `IsolationLevelTest`
 - [x] `Invariants` 3개 유지 — `SeedFixtureTest`, `PaymentFlowApiTest`, `FailureContractApiTest`, `AmountBoundaryTest`
-- [x] naive 서비스와 v1 API — 서비스 계층 테스트 26개 + `local` 프로파일 수동 스모크
+- [x] naive 서비스와 v1 API — 서비스 계층 테스트 29개 + `local` 프로파일 수동 스모크
 - [x] 정상 흐름 통합 테스트 (생성 → 승인 → 부분취소 → 조회, CARD/MONEY) — `PaymentFlowApiTest`
 - [x] 실패 규약 테스트 (401/404/400/409 + 거절 후 부작용 없음) — `FailureContractApiTest`
 - [x] k6 100 VU 1분, `http_req_failed` 0 / `checks` 100% — 7절
