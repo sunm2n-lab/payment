@@ -1,0 +1,24 @@
+# 로컬 개발/부하 테스트용 MySQL. 테스트는 Testcontainers 가 별도 컨테이너를 띄운다.
+services:
+  mysql:
+    image: mysql:8.0.44 # 패치 버전까지 고정한다 (SCENARIO 2절)
+    container_name: payment-mysql
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: payment
+      MYSQL_USER: payment
+      MYSQL_PASSWORD: payment
+    volumes:
+      - payment-mysql-data:/var/lib/mysql
+      # S7(격리 수준) / S11(서버 파라미터) 에서 쓸 자리를 지금 확보해 둔다
+      - ./docker/mysql/conf.d:/etc/mysql/conf.d
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-proot"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  payment-mysql-data:
