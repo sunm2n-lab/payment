@@ -18,6 +18,11 @@ spring:
   flyway:
     enabled: true # 로컬 시드는 Flyway 이력 밖에서 실행한다 (PHASE0.md 4.2)
 
+  jackson:
+    deserialization:
+      # 금액은 원 단위 정수다. 기본값(true)이면 1000.9 가 조용히 1000 으로 잘려 200 으로 처리된다
+      accept-float-as-int: false
+
 server:
   port: 8080
 
