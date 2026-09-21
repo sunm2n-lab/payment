@@ -98,12 +98,22 @@ SELECT @@transaction_isolation  ->  REPEATABLE-READ
 
 ### 4xx 매핑
 
-`@RestControllerAdvice` 로 도메인 예외를 4xx 에 매핑하는 것은 선택이 아니라 필수다. 이후 모든 시나리오의 완료 기준이 "예상한 실패 응답과 예상 밖 오류를 구분했는지"(SCENARIO 114행), 즉 **4xx(예상된 실패) / 5xx(예상 밖)** 구분에 의존한다. 그래서 공통 부모 하나로 뭉뚱그리지 않고 구체 예외마다 명시했다. **핸들러에 없는 예외는 5xx 로 나간다 — 그것이 "예상 밖"의 정의다.**
+`@RestControllerAdvice` 로 도메인 예외를 4xx 에 매핑하는 것은 선택이 아니라 필수다. 이후 모든 시나리오의 완료 기준이 "예상한 실패 응답과 예상 밖 오류를 구분했는지"(SCENARIO 114행), 즉 **4xx(예상된 실패) / 5xx(예상 밖)** 구분에 의존한다. 그래서 공통 부모 하나로 뭉뚱그리지 않고 구체 예외마다 명시했다.
+
+핸들러가 책임지는 범위는 **문서화된 엔드포인트에 들어온 요청의 업무·검증 실패**다. 그 범위에서 핸들러에 없는 예외는 5xx 로 나간다 — 그것이 "예상 밖"의 정의다. 반면 아래는 Spring MVC 가 자체 처리하며 `{code, message}` 가 아닌 기본 본문으로 나간다. 프로토콜 수준 오류이므로 그대로 둔다.
+
+| 상태 | 경우 |
+|---|---|
+| 404 | 매핑되지 않은 경로 |
+| 405 | 지원하지 않는 메서드 |
+| 415 | 지원하지 않는 `Content-Type` |
+
+요청이 우리 엔드포인트에 도달했는데 인자가 잘못된 경우(경로 변수 타입 불일치, 예: `GET /v1/wallets/abc`)는 `amount=0` 과 같은 범주이므로 핸들러에서 400 으로 맞춘다.
 
 | 상태 | `code` | 원인 |
 |---|---|---|
 | 401 | `UNAUTHORIZED` | `X-API-Key` 누락, 등록되지 않은 키 |
-| 400 | `INVALID_REQUEST` | 금액 0·음수, MONEY 인데 `memberId` 누락, 해석 불가한 본문 |
+| 400 | `INVALID_REQUEST` | 금액 0·음수, MONEY 인데 `memberId` 누락, 해석 불가한 본문, 컬럼 길이 초과(`orderId` 64자, `reason` 255자), 경로 변수 타입 불일치 |
 | 404 | `NOT_FOUND` | 없는 `paymentKey`/지갑, **그리고 다른 가맹점의 결제** |
 | 409 | `INSUFFICIENT_BALANCE` | 지갑 잔액 부족 |
 | 409 | `INVALID_PAYMENT_STATUS` | READY 아닌 결제의 승인, DONE/PARTIAL_CANCELED 아닌 결제의 취소 |
@@ -111,6 +121,8 @@ SELECT @@transaction_isolation  ->  REPEATABLE-READ
 | 409 | `CANCEL_AMOUNT_EXCEEDED` | 취소 금액이 잔여 금액 초과 |
 
 다른 가맹점의 결제는 조회·승인·취소 모두 404 다. 결제의 존재를 노출하지 않기 위해서이며, `payment_key` 로 찾은 뒤 메모리에서 가맹점을 비교하므로 S6 의 `merchant_id` 인덱스 부재 실험에는 영향이 없다.
+
+`orderId`(`VARCHAR(64)`)와 취소 `reason`(`VARCHAR(255)`)에는 `@Size` 를 건다. 컬럼 길이를 넘는 문자열이 검증을 통과하면 INSERT 시점에 터져 500 이 되는데, 이는 의도한 동시성 결함과 무관한 입력 검증 누락이다. 사용자 입력이 그대로 INSERT 되는 문자열 컬럼은 이 둘뿐이다 — `payment_key`/`card_approval_no` 는 서버가 생성하고, `api_key`/`payment_key` 조회는 SELECT 라 절단이 일어나지 않는다.
 
 승인 응답은 `status`(DONE)를 포함한다. k6 가 승인 결과를 응답만으로 검증한다.
 
