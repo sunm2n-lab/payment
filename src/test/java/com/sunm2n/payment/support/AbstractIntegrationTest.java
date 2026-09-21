@@ -53,4 +53,10 @@ public abstract class AbstractIntegrationTest {
     fakeCardApprovalClient.reset();
     invariants = new Invariants(jdbcTemplate);
   }
+
+  /** 시드 가맹점의 id. api_key 는 시드가 고정하지만 id 는 AUTO_INCREMENT 라 매번 달라진다. */
+  protected Long merchantIdOf(String apiKey) {
+    return jdbcTemplate.queryForObject(
+        "SELECT id FROM merchant WHERE api_key = ?", Long.class, apiKey);
+  }
 }
