@@ -30,25 +30,28 @@ class FailureContractApiTest extends AbstractApiTest {
   class Unauthorized {
 
     @Test
-    @DisplayName("API 키가 없으면 401")
+    @DisplayName("API 키가 없으면 401 이고 아무것도 바뀌지 않는다")
     void missingApiKey() throws Exception {
-      createPayment(null, createBody("no-key", AMOUNT, "CARD"))
-          .andExpect(status().isUnauthorized())
-          .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+      assertRejectedWithoutSideEffect(
+          () -> createPayment(null, createBody("no-key", AMOUNT, "CARD")),
+          status().isUnauthorized(),
+          "UNAUTHORIZED");
     }
 
     @Test
-    @DisplayName("등록되지 않은 API 키면 401")
+    @DisplayName("등록되지 않은 API 키면 401 이고 아무것도 바뀌지 않는다")
     void unknownApiKey() throws Exception {
-      createPayment("mk_not_registered", createBody("bad-key", AMOUNT, "CARD"))
-          .andExpect(status().isUnauthorized())
-          .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+      assertRejectedWithoutSideEffect(
+          () -> createPayment("mk_not_registered", createBody("bad-key", AMOUNT, "CARD")),
+          status().isUnauthorized(),
+          "UNAUTHORIZED");
     }
 
     @Test
     @DisplayName("조회에도 API 키가 필요하다")
     void getRequiresApiKey() throws Exception {
-      getWallet(null, Seeds.MEMBER_ID_1).andExpect(status().isUnauthorized());
+      assertRejectedWithoutSideEffect(
+          () -> getWallet(null, Seeds.MEMBER_ID_1), status().isUnauthorized(), "UNAUTHORIZED");
     }
   }
 
@@ -59,30 +62,57 @@ class FailureContractApiTest extends AbstractApiTest {
     @Test
     @DisplayName("없는 paymentKey 조회는 404")
     void unknownPaymentKey() throws Exception {
-      getPayment(KEY, "no-such-key")
-          .andExpect(status().isNotFound())
-          .andExpect(jsonPath("$.code").value("NOT_FOUND"));
+      assertRejectedWithoutSideEffect(
+          () -> getPayment(KEY, "no-such-key"), status().isNotFound(), "NOT_FOUND");
     }
 
     @Test
     @DisplayName("없는 지갑 조회는 404")
     void unknownWallet() throws Exception {
-      getWallet(KEY, 9_999L).andExpect(status().isNotFound());
+      assertRejectedWithoutSideEffect(
+          () -> getWallet(KEY, 9_999L), status().isNotFound(), "NOT_FOUND");
     }
 
     @Test
-    @DisplayName("다른 가맹점의 결제는 조회·승인·취소 모두 404 - 존재를 노출하지 않는다")
-    void otherMerchantsPayment() throws Exception {
+    @DisplayName("다른 가맹점의 승인·취소는 404 이고 상태를 바꾸거나 카드사를 부르지 않는다")
+    void otherMerchantsPaymentHasNoSideEffect() throws Exception {
       String paymentKey = createPaymentKey(KEY, createBody("owned", AMOUNT, "CARD"));
       confirmPayment(KEY, confirmBody(paymentKey, "owned", AMOUNT)).andExpect(status().isOk());
 
-      getPayment(OTHER_KEY, paymentKey).andExpect(status().isNotFound());
-      confirmPayment(OTHER_KEY, confirmBody(paymentKey, "owned", AMOUNT))
-          .andExpect(status().isNotFound());
-      cancelPayment(OTHER_KEY, paymentKey, cancelBody(1_000L)).andExpect(status().isNotFound());
+      // 소유권 위반은 "상태를 바꾼 뒤 404 를 주는" 회귀가 가장 위험하다. 직전·직후를 비교한다.
+      assertRejectedWithoutSideEffect(
+          () -> getPayment(OTHER_KEY, paymentKey), status().isNotFound(), "NOT_FOUND");
+      assertRejectedWithoutSideEffect(
+          () -> confirmPayment(OTHER_KEY, confirmBody(paymentKey, "owned", AMOUNT)),
+          status().isNotFound(),
+          "NOT_FOUND");
+      assertRejectedWithoutSideEffect(
+          () -> cancelPayment(OTHER_KEY, paymentKey, cancelBody(1_000L)),
+          status().isNotFound(),
+          "NOT_FOUND");
+    }
 
-      // 없는 키와 남의 결제가 같은 응답이어야 존재가 드러나지 않는다
-      getPayment(OTHER_KEY, "no-such-key").andExpect(status().isNotFound());
+    @Test
+    @DisplayName("없는 키와 남의 결제가 같은 응답이어야 존재가 드러나지 않는다")
+    void unknownAndUnownedLookAlike() throws Exception {
+      String paymentKey = createPaymentKey(KEY, createBody("owned-2", AMOUNT, "CARD"));
+
+      String unowned =
+          getPayment(OTHER_KEY, paymentKey)
+              .andExpect(status().isNotFound())
+              .andReturn()
+              .getResponse()
+              .getContentAsString();
+      String unknown =
+          getPayment(OTHER_KEY, "no-such-key")
+              .andExpect(status().isNotFound())
+              .andReturn()
+              .getResponse()
+              .getContentAsString();
+
+      // 메시지에 요청한 키가 되비칠 뿐, 결제의 존재 여부를 구분할 단서는 없어야 한다
+      assertThat(unowned.replace(paymentKey, "KEY"))
+          .isEqualTo(unknown.replace("no-such-key", "KEY"));
     }
   }
 
@@ -93,29 +123,37 @@ class FailureContractApiTest extends AbstractApiTest {
     @Test
     @DisplayName("금액이 0 이면 400")
     void zeroAmount() throws Exception {
-      createPayment(KEY, createBody("zero", 0L, "CARD"))
-          .andExpect(status().isBadRequest())
-          .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+      assertRejectedWithoutSideEffect(
+          () -> createPayment(KEY, createBody("zero", 0L, "CARD")),
+          status().isBadRequest(),
+          "INVALID_REQUEST");
     }
 
     @Test
     @DisplayName("금액이 음수면 400")
     void negativeAmount() throws Exception {
-      createPayment(KEY, createBody("negative", -1L, "CARD")).andExpect(status().isBadRequest());
+      assertRejectedWithoutSideEffect(
+          () -> createPayment(KEY, createBody("negative", -1L, "CARD")),
+          status().isBadRequest(),
+          "INVALID_REQUEST");
     }
 
     @Test
     @DisplayName("MONEY 인데 memberId 가 없으면 400")
     void moneyWithoutMemberId() throws Exception {
-      createPayment(KEY, createBody("money-no-member", AMOUNT, "MONEY"))
-          .andExpect(status().isBadRequest())
-          .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+      assertRejectedWithoutSideEffect(
+          () -> createPayment(KEY, createBody("money-no-member", AMOUNT, "MONEY")),
+          status().isBadRequest(),
+          "INVALID_REQUEST");
     }
 
     @Test
     @DisplayName("충전 금액이 0 이면 400")
     void zeroCharge() throws Exception {
-      chargeWallet(KEY, Seeds.MEMBER_ID_1, amountBody(0L)).andExpect(status().isBadRequest());
+      assertRejectedWithoutSideEffect(
+          () -> chargeWallet(KEY, Seeds.MEMBER_ID_1, amountBody(0L)),
+          status().isBadRequest(),
+          "INVALID_REQUEST");
     }
 
     @Test
@@ -125,12 +163,15 @@ class FailureContractApiTest extends AbstractApiTest {
       confirmPayment(KEY, confirmBody(paymentKey, "zero-cancel", AMOUNT))
           .andExpect(status().isOk());
 
-      cancelPayment(KEY, paymentKey, cancelBody(0L)).andExpect(status().isBadRequest());
+      assertRejectedWithoutSideEffect(
+          () -> cancelPayment(KEY, paymentKey, cancelBody(0L)),
+          status().isBadRequest(),
+          "INVALID_REQUEST");
     }
   }
 
   @Nested
-  @DisplayName("409 - 업무 규칙 위반 (거절 후 부작용 없음까지 확인)")
+  @DisplayName("409 - 업무 규칙 위반")
   class Conflict {
 
     @Test

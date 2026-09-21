@@ -85,6 +85,13 @@ class PaymentFlowApiTest extends AbstractApiTest {
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.balance").value(24_000L));
 
+    getPayment(KEY, paymentKey)
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.status").value("PARTIAL_CANCELED"))
+        .andExpect(jsonPath("$.balanceAmount").value(6_000L))
+        .andExpect(jsonPath("$.amount").value(AMOUNT))
+        .andExpect(jsonPath("$.method").value("MONEY"));
+
     // 원장 3건: CHARGE +30,000 / PAY -10,000 / REFUND +4,000 = 24,000
     assertThat(ledgerCount()).isEqualTo(3);
     assertThat(ledgerSum()).isEqualTo(24_000L);
