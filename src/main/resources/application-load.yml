@@ -1,0 +1,5 @@
+# k6 부하 실행용. 100 VU 에서 Hibernate SQL 로깅은 처리량을 눈에 띄게 깎으므로 끈다.
+logging:
+  level:
+    org.hibernate.SQL: INFO
+    org.hibernate.orm.jdbc.bind: INFO

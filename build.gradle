@@ -21,13 +21,26 @@ repositories {
 
 dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+    // S8 에서 Hikari 메트릭을 관측하기 위해 미리 넣어 둔다
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation 'org.flywaydb:flyway-core'
+    // Flyway 10+ 는 DB별 모듈이 분리돼 있어 MySQL 을 쓰려면 반드시 필요하다
+    implementation 'org.flywaydb:flyway-mysql'
+    runtimeOnly 'com.mysql:mysql-connector-j'
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.boot:spring-boot-testcontainers'
+    testImplementation 'org.testcontainers:mysql'
+    testImplementation 'org.testcontainers:junit-jupiter'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
 tasks.named('test') {
     useJUnitPlatform()
+    // 통합 테스트가 하나의 MySQL 컨테이너를 공유하고 TRUNCATE 로 정리하므로 fork 를 늘리지 않는다
+    maxParallelForks = 1
 }
 
 // 코드 스타일: 로컬에서는 `./gradlew spotlessApply`, CI에서는 `spotlessCheck`
