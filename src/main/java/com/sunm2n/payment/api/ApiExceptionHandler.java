@@ -1,6 +1,7 @@
 package com.sunm2n.payment.api;
 
 import com.sunm2n.payment.api.dto.ErrorResponse;
+import com.sunm2n.payment.domain.exception.BalanceOverflowException;
 import com.sunm2n.payment.domain.exception.CancelAmountExceededException;
 import com.sunm2n.payment.domain.exception.DomainException;
 import com.sunm2n.payment.domain.exception.InsufficientBalanceException;
@@ -43,6 +44,11 @@ public class ApiExceptionHandler {
   @ExceptionHandler(InsufficientBalanceException.class)
   public ResponseEntity<ErrorResponse> handleInsufficientBalance(InsufficientBalanceException e) {
     return response(HttpStatus.CONFLICT, "INSUFFICIENT_BALANCE", e);
+  }
+
+  @ExceptionHandler(BalanceOverflowException.class)
+  public ResponseEntity<ErrorResponse> handleBalanceOverflow(BalanceOverflowException e) {
+    return response(HttpStatus.CONFLICT, "BALANCE_LIMIT_EXCEEDED", e);
   }
 
   @ExceptionHandler(InvalidPaymentStatusException.class)

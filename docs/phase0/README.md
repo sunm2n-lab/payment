@@ -113,16 +113,25 @@ SELECT @@transaction_isolation  ->  REPEATABLE-READ
 | 상태 | `code` | 원인 |
 |---|---|---|
 | 401 | `UNAUTHORIZED` | `X-API-Key` 누락, 등록되지 않은 키 |
-| 400 | `INVALID_REQUEST` | 금액 0·음수, MONEY 인데 `memberId` 누락, 해석 불가한 본문, 컬럼 길이 초과(`orderId` 64자, `reason` 255자), 경로 변수 타입 불일치 |
+| 400 | `INVALID_REQUEST` | 금액 0·음수·**소수**, MONEY 인데 `memberId` 누락, 해석 불가한 본문, 컬럼 길이 초과(`orderId` 64자, `reason` 255자), 경로 변수 타입 불일치 |
 | 404 | `NOT_FOUND` | 없는 `paymentKey`/지갑, **그리고 다른 가맹점의 결제** |
 | 409 | `INSUFFICIENT_BALANCE` | 지갑 잔액 부족 |
 | 409 | `INVALID_PAYMENT_STATUS` | READY 아닌 결제의 승인, DONE/PARTIAL_CANCELED 아닌 결제의 취소 |
 | 409 | `PAYMENT_MISMATCH` | 승인 요청의 `orderId`/`amount` 불일치 |
 | 409 | `CANCEL_AMOUNT_EXCEEDED` | 취소 금액이 잔여 금액 초과 |
+| 409 | `BALANCE_LIMIT_EXCEEDED` | 충전·환불 덧셈이 `long` 범위 초과 |
 
 다른 가맹점의 결제는 조회·승인·취소 모두 404 다. 결제의 존재를 노출하지 않기 위해서이며, `payment_key` 로 찾은 뒤 메모리에서 가맹점을 비교하므로 S6 의 `merchant_id` 인덱스 부재 실험에는 영향이 없다.
 
 `orderId`(`VARCHAR(64)`)와 취소 `reason`(`VARCHAR(255)`)에는 `@Size` 를 건다. 컬럼 길이를 넘는 문자열이 검증을 통과하면 INSERT 시점에 터져 500 이 되는데, 이는 의도한 동시성 결함과 무관한 입력 검증 누락이다. 사용자 입력이 그대로 INSERT 되는 문자열 컬럼은 이 둘뿐이다 — `payment_key`/`card_approval_no` 는 서버가 생성하고, `api_key`/`payment_key` 조회는 SELECT 라 절단이 일어나지 않는다.
+
+### 금액 경계
+
+금액은 **원 단위 정수**다. Jackson 의 `ACCEPT_FLOAT_AS_INT` 는 기본값이 `true` 라 `1000.9` 가 조용히 `1000` 으로 잘려 200 으로 처리된다. `accept-float-as-int: false` 로 꺼서 400 으로 거절한다.
+
+충전과 취소 환불의 **덧셈**은 `Amounts.add`(내부적으로 `Math.addExact`)로 오버플로를 막고 409 로 응답한다. 막지 않으면 `Long.MAX_VALUE` 충전 뒤 1원 충전만으로 잔액이 `-9223372036854775808` 이 되고, 원장 합계와 어긋나 **순차 요청만으로 불변식 1이 깨진다.**
+
+**뺄셈에는 일부러 적용하지 않는다.** 여기서 막아야 하는 것은 "관찰 대상인 음수"가 아니라 "오버플로로 생긴 가짜 음수"다. 결제 승인의 잔액 차감이 음수를 만들 수 있어야 S2 의 Lost Update 실습(잔액 **-2,000** 관찰)이 성립하는데, 둘이 섞이면 S2 에서 원인을 구분할 수 없다. 음수 잔액 자체는 앱도 DB 도 막지 않으며 `Invariants` 가 검출한다 — `AmountBoundaryTest.negativeBalanceStaysObservable` 이 그 전제를 테스트로 고정한다.
 
 승인 응답은 `status`(DONE)를 포함한다. k6 가 승인 결과를 응답만으로 검증한다.
 

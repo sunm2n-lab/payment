@@ -94,6 +94,65 @@ class ApiInputValidationTest extends AbstractIntegrationTest {
   }
 
   @Test
+  @DisplayName("소수 금액은 잘라서 처리하지 않고 400 으로 거절한다")
+  void decimalAmountIsRejectedOnCreate() throws Exception {
+    mockMvc
+        .perform(
+            post("/v1/payments")
+                .header(API_KEY_HEADER, Seeds.MERCHANT_1_API_KEY)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"orderId\":\"frac-1\",\"amount\":1000.9,\"method\":\"CARD\"}"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+  }
+
+  @Test
+  @DisplayName("충전 금액도 소수면 400 이다")
+  void decimalAmountIsRejectedOnCharge() throws Exception {
+    mockMvc
+        .perform(
+            post("/v1/wallets/{memberId}/charge", Seeds.MEMBER_ID_1)
+                .header(API_KEY_HEADER, Seeds.MERCHANT_1_API_KEY)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"amount\":500.7}"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+  }
+
+  @Test
+  @DisplayName("소수점 이하가 0 이어도 정수가 아니면 거절한다 - 금액은 원 단위 정수다")
+  void decimalWithZeroFractionIsAlsoRejected() throws Exception {
+    mockMvc
+        .perform(
+            post("/v1/wallets/{memberId}/charge", Seeds.MEMBER_ID_1)
+                .header(API_KEY_HEADER, Seeds.MERCHANT_1_API_KEY)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"amount\":500.0}"))
+        .andExpect(status().isBadRequest());
+  }
+
+  @Test
+  @DisplayName("잔액 오버플로는 200 이 아니라 409 다")
+  void balanceOverflowIsConflict() throws Exception {
+    mockMvc
+        .perform(
+            post("/v1/wallets/{memberId}/charge", Seeds.MEMBER_ID_1)
+                .header(API_KEY_HEADER, Seeds.MERCHANT_1_API_KEY)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"amount\":" + Long.MAX_VALUE + "}"))
+        .andExpect(status().isOk());
+
+    mockMvc
+        .perform(
+            post("/v1/wallets/{memberId}/charge", Seeds.MEMBER_ID_1)
+                .header(API_KEY_HEADER, Seeds.MERCHANT_1_API_KEY)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"amount\":1}"))
+        .andExpect(status().isConflict())
+        .andExpect(jsonPath("$.code").value("BALANCE_LIMIT_EXCEEDED"));
+  }
+
+  @Test
   @DisplayName("경로 변수 형식 오류도 공통 에러 응답을 따른다")
   void pathVariableTypeMismatch() throws Exception {
     mockMvc

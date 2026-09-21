@@ -1,5 +1,6 @@
 package com.sunm2n.payment.application;
 
+import com.sunm2n.payment.domain.Amounts;
 import com.sunm2n.payment.domain.LedgerType;
 import com.sunm2n.payment.domain.Wallet;
 import com.sunm2n.payment.domain.WalletLedger;
@@ -38,7 +39,7 @@ public class WalletService {
   public Wallet charge(Long memberId, long amount) {
     Wallet wallet = findWallet(memberId);
 
-    wallet.setBalance(wallet.getBalance() + amount);
+    wallet.setBalance(Amounts.add(wallet.getBalance(), amount));
     walletLedgerRepository.save(new WalletLedger(wallet.getId(), LedgerType.CHARGE, amount, null));
 
     return wallet;

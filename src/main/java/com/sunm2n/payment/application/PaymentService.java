@@ -1,5 +1,6 @@
 package com.sunm2n.payment.application;
 
+import com.sunm2n.payment.domain.Amounts;
 import com.sunm2n.payment.domain.LedgerType;
 import com.sunm2n.payment.domain.Payment;
 import com.sunm2n.payment.domain.PaymentCancel;
@@ -101,6 +102,7 @@ public class PaymentService {
       if (wallet.getBalance() < amount) {
         throw new InsufficientBalanceException(wallet.getId(), wallet.getBalance(), amount);
       }
+      // 차감에는 Amounts 를 쓰지 않는다. 음수 잔액은 S2 의 관찰 대상이다.
       wallet.setBalance(wallet.getBalance() - amount);
       walletLedgerRepository.save(
           new WalletLedger(wallet.getId(), LedgerType.PAY, -amount, payment.getId()));
@@ -136,7 +138,7 @@ public class PaymentService {
 
     if (payment.getMethod() == PaymentMethod.MONEY) {
       Wallet wallet = loadWallet(payment);
-      wallet.setBalance(wallet.getBalance() + cancelAmount);
+      wallet.setBalance(Amounts.add(wallet.getBalance(), cancelAmount));
       walletLedgerRepository.save(
           new WalletLedger(wallet.getId(), LedgerType.REFUND, cancelAmount, payment.getId()));
     } else {
