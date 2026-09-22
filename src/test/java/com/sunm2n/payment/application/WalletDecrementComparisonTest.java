@@ -36,6 +36,9 @@ class WalletDecrementComparisonTest extends AbstractIntegrationTest {
   private static final long AMOUNT = 3_000L;
   private static final long INITIAL_BALANCE = 10_000L;
 
+  /** 시드가 만드는 지갑은 5개뿐이라 이 id 는 존재하지 않는다. */
+  private static final long MISSING_WALLET_ID = 999_999L;
+
   @Autowired private PaymentService paymentService;
   @Autowired private WalletService walletService;
 
@@ -79,6 +82,7 @@ class WalletDecrementComparisonTest extends AbstractIntegrationTest {
         .isEqualTo(balanceOf(Seeds.MEMBER_ID_1));
 
     assertApprovedWithTimestamp(WORKERS);
+    assertOneLedgerRowPerApprovedPayment();
 
     assertThatThrownBy(() -> invariants.assertWalletBalanceMatchesLedger())
         .as("잔액 -2,000 - DB 가 막지 않으므로 Invariants 가 검출한다")
@@ -112,9 +116,22 @@ class WalletDecrementComparisonTest extends AbstractIntegrationTest {
     assertThat(balanceOf(Seeds.MEMBER_ID_1)).isEqualTo(INITIAL_BALANCE - 3 * AMOUNT);
     assertThat(payLedgerCount(Seeds.MEMBER_ID_1)).isEqualTo(3);
     assertApprovedWithTimestamp(3);
+    assertOneLedgerRowPerApprovedPayment();
     assertRejectedLeftNothingBehind();
 
     invariants.assertAll();
+  }
+
+  /** 성공 경로 공통 단언 ({@code docs/plan/S2.md} 5.1) — 성공한 결제마다 PAY 원장은 정확히 1건이다. */
+  private void assertOneLedgerRowPerApprovedPayment() {
+    assertThat(
+            jdbcTemplate.queryForList(
+                "SELECT p.payment_key, COUNT(l.id) AS pay_rows FROM payment p"
+                    + " LEFT JOIN wallet_ledger l ON l.payment_id = p.id AND l.type = 'PAY'"
+                    + " WHERE p.status = 'DONE'"
+                    + " GROUP BY p.payment_key HAVING COUNT(l.id) <> 1"))
+        .as("성공한 결제의 PAY 원장은 결제당 정확히 1건이다 - 합계만 보면 쏠림을 놓친다")
+        .isEmpty();
   }
 
   /** 실패 경로 공통 단언 ({@code docs/plan/S2.md} 5.1) — 거절된 결제는 READY 로 남고 원장도 남기지 않는다. */
@@ -135,6 +152,27 @@ class WalletDecrementComparisonTest extends AbstractIntegrationTest {
             jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM payment WHERE status = 'READY'", Integer.class))
         .isEqualTo(1);
+  }
+
+  @Test
+  @DisplayName("지갑이 없으면 조건부 감산도 잔액 부족이 아니라 데이터 불일치로 끝난다")
+  void guardedDecrementDoesNotDisguiseAMissingWalletAsInsufficientBalance() {
+    walletService.charge(Seeds.MEMBER_ID_1, INITIAL_BALANCE);
+    String paymentKey = createPayments(1).get(0);
+    // 갱신 0 건을 만드는 다른 이유를 심는다. 결제가 가리키는 지갑이 없는 상태다.
+    jdbcTemplate.update(
+        "UPDATE payment SET wallet_id = ? WHERE payment_key = ?", MISSING_WALLET_ID, paymentKey);
+
+    assertThatThrownBy(
+            () -> guardedDebitConfirmer.confirm(merchantId, paymentKey, ORDER_ID, AMOUNT))
+        .as("잔액 부족(409)으로 바꿔 버리면 이 전략만 실패의 의미가 달라진다")
+        .isInstanceOf(IllegalStateException.class)
+        .isNotInstanceOf(InsufficientBalanceException.class)
+        .hasMessageContaining("지갑이 없습니다");
+
+    assertThat(currentStatus(paymentKey)).as("전체 롤백이므로 READY 로 남는다").isEqualTo("READY");
+    assertThat(payLedgerCount(Seeds.MEMBER_ID_1)).isZero();
+    assertThat(balanceOf(Seeds.MEMBER_ID_1)).isEqualTo(INITIAL_BALANCE);
   }
 
   private List<String> createPayments(int count) {
@@ -161,6 +199,11 @@ class WalletDecrementComparisonTest extends AbstractIntegrationTest {
                 Integer.class))
         .as("승인에 성공한 결제는 DONE + approved_at 이다")
         .isEqualTo(expected);
+  }
+
+  private String currentStatus(String paymentKey) {
+    return jdbcTemplate.queryForObject(
+        "SELECT status FROM payment WHERE payment_key = ?", String.class, paymentKey);
   }
 
   private long balanceOf(long memberId) {

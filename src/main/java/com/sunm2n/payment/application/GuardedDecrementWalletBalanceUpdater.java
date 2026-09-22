@@ -15,8 +15,8 @@ import com.sunm2n.payment.infrastructure.WalletRepository;
  * <p>실험 1 이 남긴 음수 잔액은 검사가 감산 밖에 있어서 생겼다. 검사를 WHERE 로 들여보내면 그 틈이 사라진다. 갱신 건수가 1 인 요청만 승인을 진행하고, 나머지는
  * 잔액 부족으로 거절된다 — S1 이 상태 전이에 쓴 방법과 같은 모양이다.
  *
- * <p>이 전략은 <b>지갑을 읽지 않는다.</b> 검사가 UPDATE 안에 있으므로 읽을 이유가 없고, 읽지 않으므로 오래된 엔티티도 생기지 않는다. 대신 거절할 때 잔액을
- * 주장할 수 없다 ({@link InsufficientBalanceException#notEnough}).
+ * <p>성공 경로에서는 <b>지갑을 읽지 않는다.</b> 검사가 UPDATE 안에 있으므로 읽을 이유가 없고, 읽지 않으므로 오래된 엔티티도 생기지 않는다. 대신 거절할 때
+ * 잔액을 주장할 수 없다 ({@link InsufficientBalanceException#notEnough}).
  *
  * <p>충전은 관찰 대상이 아니므로 naive 에 위임한다.
  */
@@ -38,8 +38,12 @@ public class GuardedDecrementWalletBalanceUpdater implements WalletBalanceUpdate
   @Override
   public void debit(Long walletId, Long paymentId, long amount) {
     if (walletRepository.decreaseBalanceIfEnough(walletId, amount) == 0) {
-      // 0 건의 이유는 둘이다 - 잔액 부족이거나 지갑이 없거나. 후자는 결제 생성 시점에 확정된 wallet_id 라
-      // 데이터 불일치에 해당하지만, 여기서 구분하려면 결국 한 번 더 읽어야 한다. 실습의 관찰 대상은 전자다.
+      // 0 건의 이유는 둘이다 - 잔액이 모자라거나 지갑이 아예 없거나. 다른 전략은 지갑이 없을 때 데이터
+      // 불일치(5xx)로 끝내므로, 구분하지 않으면 이 전략만 실패의 의미가 달라진다. 실패 경로에서만 한 번 더
+      // 묻고, 잔액은 읽지 않는다 - 존재 여부만 필요하다.
+      if (!walletRepository.existsById(walletId)) {
+        throw new IllegalStateException("결제에 연결된 지갑이 없습니다. walletId=" + walletId);
+      }
       throw InsufficientBalanceException.notEnough(walletId, amount);
     }
     walletLedgerRepository.save(new WalletLedger(walletId, LedgerType.PAY, -amount, paymentId));
