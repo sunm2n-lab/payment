@@ -1,8 +1,11 @@
 package com.sunm2n.payment.application;
 
 import com.sunm2n.payment.infrastructure.PaymentRepository;
+import com.sunm2n.payment.infrastructure.VersionedWalletRepository;
 import com.sunm2n.payment.infrastructure.WalletLedgerRepository;
 import com.sunm2n.payment.infrastructure.WalletRepository;
+import java.time.Duration;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
@@ -86,6 +89,52 @@ public class ConcurrencyStrategyConfig {
       PaymentRepository paymentRepository,
       GuardedDecrementWalletBalanceUpdater guardedUpdater) {
     return new CasPaymentConfirmer(support, paymentRepository, guardedUpdater);
+  }
+
+  /** S2-a 낙관적 락. {@code VersionedWallet} 만 쓴다. */
+  @Bean
+  OptimisticLockWalletBalanceUpdater optimisticLockWalletBalanceUpdater(
+      VersionedWalletRepository versionedWalletRepository,
+      WalletLedgerRepository walletLedgerRepository,
+      NaiveWalletBalanceUpdater naiveUpdater) {
+    return new OptimisticLockWalletBalanceUpdater(
+        versionedWalletRepository, walletLedgerRepository, naiveUpdater);
+  }
+
+  /**
+   * S2-a 의 배선 — CAS 승인 + 낙관적 락. <b>트랜잭션 경계가 여기다.</b>
+   *
+   * <p>충돌은 이 경계의 커밋에서 터지므로, 재시도는 이 빈을 감싸는 {@link #retryingOptimisticDebitConfirmer} 가 맡는다.
+   */
+  @Bean
+  PaymentConfirmer optimisticDebitConfirmer(
+      PaymentSupport support,
+      PaymentRepository paymentRepository,
+      OptimisticLockWalletBalanceUpdater optimisticUpdater) {
+    return new CasPaymentConfirmer(support, paymentRepository, optimisticUpdater);
+  }
+
+  @Bean
+  RetryMetrics optimisticRetryMetrics() {
+    return new RetryMetrics();
+  }
+
+  /**
+   * S2-a 재시도. 트랜잭션 <b>바깥</b>이라 {@code @Transactional} 을 붙이지 않는다.
+   *
+   * <p>{@code maxAttempts = 4}(최초 호출 포함)의 근거: 버전을 올리는 것은 커밋에 성공한 차감뿐이고 잔액 10,000 / 건당 3,000 이면 성공은
+   * 최대 3건이다. 따라서 어떤 워커도 최대 3회까지만 충돌할 수 있어 4번째 시도에서 반드시 판정이 난다.
+   */
+  @Bean
+  PaymentConfirmer retryingOptimisticDebitConfirmer(
+      @Qualifier("optimisticDebitConfirmer") PaymentConfirmer optimisticDebitConfirmer,
+      RetryMetrics optimisticRetryMetrics) {
+    return new RetryingPaymentConfirmer(
+        optimisticDebitConfirmer,
+        4,
+        Duration.ofMillis(20),
+        optimisticRetryMetrics,
+        RetryingPaymentConfirmer.Sleeper.real());
   }
 
   /**

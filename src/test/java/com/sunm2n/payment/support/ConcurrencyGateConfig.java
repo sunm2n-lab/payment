@@ -1,6 +1,7 @@
 package com.sunm2n.payment.support;
 
 import com.sunm2n.payment.infrastructure.PaymentRepository;
+import com.sunm2n.payment.infrastructure.VersionedWalletRepository;
 import com.sunm2n.payment.infrastructure.WalletRepository;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.InvocationTargetException;
@@ -50,6 +51,15 @@ public class ConcurrencyGateConfig {
               gate::getObject,
               Map.of(),
               Map.of("findByPaymentKey", ConcurrencyGate.PAYMENT_READ));
+        }
+        if (bean instanceof VersionedWalletRepository) {
+          return gated(
+              bean,
+              VersionedWalletRepository.class,
+              gate::getObject,
+              Map.of(),
+              // S2-a 도 "모두 같은 잔액을 읽은 시점" 으로 맞춘다. 여기서는 버전도 같이 읽는다.
+              Map.of("findById", ConcurrencyGate.WALLET_READ));
         }
         if (bean instanceof WalletRepository) {
           return gated(
