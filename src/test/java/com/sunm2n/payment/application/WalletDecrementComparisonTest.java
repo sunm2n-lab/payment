@@ -10,6 +10,7 @@ import com.sunm2n.payment.support.AbstractIntegrationTest;
 import com.sunm2n.payment.support.ConcurrencyGate;
 import com.sunm2n.payment.support.ConcurrentRunner;
 import com.sunm2n.payment.support.Seeds;
+import com.sunm2n.payment.support.StateSnapshot;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Queue;
@@ -162,6 +163,7 @@ class WalletDecrementComparisonTest extends AbstractIntegrationTest {
     // 갱신 0 건을 만드는 다른 이유를 심는다. 결제가 가리키는 지갑이 없는 상태다.
     jdbcTemplate.update(
         "UPDATE payment SET wallet_id = ? WHERE payment_key = ?", MISSING_WALLET_ID, paymentKey);
+    StateSnapshot before = StateSnapshot.capture(jdbcTemplate, fakeCardApprovalClient);
 
     assertThatThrownBy(
             () -> guardedDebitConfirmer.confirm(merchantId, paymentKey, ORDER_ID, AMOUNT))
@@ -171,8 +173,11 @@ class WalletDecrementComparisonTest extends AbstractIntegrationTest {
         .hasMessageContaining("지갑이 없습니다");
 
     assertThat(currentStatus(paymentKey)).as("전체 롤백이므로 READY 로 남는다").isEqualTo("READY");
-    assertThat(payLedgerCount(Seeds.MEMBER_ID_1)).isZero();
-    assertThat(balanceOf(Seeds.MEMBER_ID_1)).isEqualTo(INITIAL_BALANCE);
+    // 지갑 기준으로 원장을 세면 없는 walletId 로 들어간 고아 원장이 조인에서 빠져 보이지 않는다.
+    // 부작용은 행 목록을 통째로 비교해 확인한다.
+    assertThat(StateSnapshot.capture(jdbcTemplate, fakeCardApprovalClient))
+        .as("거절된 요청은 잔액도 원장도 결제도 바꾸지 않는다")
+        .isEqualTo(before);
   }
 
   private List<String> createPayments(int count) {
