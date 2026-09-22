@@ -69,6 +69,25 @@ public class ConcurrencyStrategyConfig {
     return new CasPaymentConfirmer(support, paymentRepository, atomicUpdater);
   }
 
+  /** S2 비교 실험 2 — 검사까지 UPDATE 안으로 넣은 조건부 감산. */
+  @Bean
+  GuardedDecrementWalletBalanceUpdater guardedDecrementWalletBalanceUpdater(
+      WalletRepository walletRepository,
+      WalletLedgerRepository walletLedgerRepository,
+      NaiveWalletBalanceUpdater naiveUpdater) {
+    return new GuardedDecrementWalletBalanceUpdater(
+        walletRepository, walletLedgerRepository, naiveUpdater);
+  }
+
+  /** 비교 실험 2 의 배선 — CAS 승인 + 조건부 감산. */
+  @Bean
+  PaymentConfirmer guardedDebitConfirmer(
+      PaymentSupport support,
+      PaymentRepository paymentRepository,
+      GuardedDecrementWalletBalanceUpdater guardedUpdater) {
+    return new CasPaymentConfirmer(support, paymentRepository, guardedUpdater);
+  }
+
   /**
    * 본선 승인. {@link PaymentService} 가 이 빈에 위임한다.
    *

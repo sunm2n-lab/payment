@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.sunm2n.payment.domain.Payment;
 import com.sunm2n.payment.domain.PaymentMethod;
+import com.sunm2n.payment.domain.exception.InsufficientBalanceException;
 import com.sunm2n.payment.support.AbstractIntegrationTest;
 import com.sunm2n.payment.support.ConcurrencyGate;
 import com.sunm2n.payment.support.ConcurrentRunner;
@@ -42,6 +43,10 @@ class WalletDecrementComparisonTest extends AbstractIntegrationTest {
   @Qualifier("atomicDebitConfirmer")
   private PaymentConfirmer atomicDebitConfirmer;
 
+  @Autowired
+  @Qualifier("guardedDebitConfirmer")
+  private PaymentConfirmer guardedDebitConfirmer;
+
   private Long merchantId;
 
   @BeforeEach
@@ -78,6 +83,58 @@ class WalletDecrementComparisonTest extends AbstractIntegrationTest {
     assertThatThrownBy(() -> invariants.assertWalletBalanceMatchesLedger())
         .as("잔액 -2,000 - DB 가 막지 않으므로 Invariants 가 검출한다")
         .isInstanceOf(AssertionError.class);
+  }
+
+  @Test
+  @DisplayName("실험 2 - 검사까지 UPDATE 안으로 넣으면 성공 3 / 부족 1 로 갈리고 불변식이 모두 유지된다")
+  void guardedDecrementRejectsTheFourthRequest() {
+    walletService.charge(Seeds.MEMBER_ID_1, INITIAL_BALANCE);
+    Queue<String> paymentKeys = new ConcurrentLinkedQueue<>(createPayments(WORKERS));
+
+    // 이 전략은 지갑을 읽지 않으므로 WALLET_READ 에는 아무도 오지 않는다. 결제 조회 시점으로 출발을 맞춘다.
+    concurrencyGate.arm(ConcurrencyGate.PAYMENT_READ, WORKERS);
+    ConcurrentRunner.Results<Payment> results =
+        ConcurrentRunner.run(
+            WORKERS,
+            () -> guardedDebitConfirmer.confirm(merchantId, paymentKeys.poll(), ORDER_ID, AMOUNT));
+
+    assertThat(results.successCount()).as("10,000 으로 3,000 짜리는 세 건까지다").isEqualTo(3);
+    assertThat(results.failuresOf(InsufficientBalanceException.class))
+        .as("네 번째는 최신 잔액으로 조건이 재평가되어 0 건으로 탈락한다")
+        .hasSize(1);
+    assertThat(results.failuresOtherThan(InsufficientBalanceException.class))
+        .as("예상 밖 오류는 없다")
+        .isEmpty();
+    assertThat(results.failures().get(0))
+        .as("탈락자는 아무 행도 바꾸지 않았고 재조회는 옛 스냅샷을 준다 - 잔액을 주장하지 않는다")
+        .hasMessageNotContaining("balance=");
+
+    assertThat(balanceOf(Seeds.MEMBER_ID_1)).isEqualTo(INITIAL_BALANCE - 3 * AMOUNT);
+    assertThat(payLedgerCount(Seeds.MEMBER_ID_1)).isEqualTo(3);
+    assertApprovedWithTimestamp(3);
+    assertRejectedLeftNothingBehind();
+
+    invariants.assertAll();
+  }
+
+  /** 실패 경로 공통 단언 ({@code docs/plan/S2.md} 5.1) — 거절된 결제는 READY 로 남고 원장도 남기지 않는다. */
+  private void assertRejectedLeftNothingBehind() {
+    assertThat(
+            jdbcTemplate.queryForList(
+                "SELECT p.payment_key FROM payment p WHERE p.status <> 'DONE'", String.class))
+        .as("거절된 결제는 IN_PROGRESS 가 아니라 READY 로 롤백된다")
+        .hasSize(1);
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM wallet_ledger l JOIN payment p ON p.id = l.payment_id"
+                    + " WHERE p.status <> 'DONE'",
+                Integer.class))
+        .as("거절된 결제의 원장은 0건이다")
+        .isZero();
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM payment WHERE status = 'READY'", Integer.class))
+        .isEqualTo(1);
   }
 
   private List<String> createPayments(int count) {

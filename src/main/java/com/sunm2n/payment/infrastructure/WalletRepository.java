@@ -35,4 +35,19 @@ public interface WalletRepository extends JpaRepository<Wallet, Long> {
   @Modifying
   @Query(value = "UPDATE wallet SET balance = balance - :amount WHERE id = :id", nativeQuery = true)
   int decreaseBalance(@Param("id") Long id, @Param("amount") long amount);
+
+  /**
+   * S2 비교 실험 2 — 검사와 감산을 한 문장으로 원자화한다 (SCENARIO 140행). 갱신 건수가 1 일 때만 성공이다.
+   *
+   * <p>S1 의 {@code markInProgress} 와 같은 모양이다. 검사를 WHERE 로 옮겨 그 사이에 끼어들 틈을 없앤다. 뒤늦게 도착한 요청은 앞선 요청이
+   * 커밋한 <b>최신 값</b>으로 조건을 재평가하므로, 잔액이 모자라면 0 건으로 탈락한다.
+   *
+   * <p>갱신 건수는 matched 든 changed 든 같다. 금액이 양수라 조건에 걸린 행은 반드시 값이 바뀌므로 드라이버의 {@code useAffectedRows}
+   * 설정에 결과가 좌우되지 않는다.
+   */
+  @Modifying
+  @Query(
+      value = "UPDATE wallet SET balance = balance - :amount WHERE id = :id AND balance >= :amount",
+      nativeQuery = true)
+  int decreaseBalanceIfEnough(@Param("id") Long id, @Param("amount") long amount);
 }
