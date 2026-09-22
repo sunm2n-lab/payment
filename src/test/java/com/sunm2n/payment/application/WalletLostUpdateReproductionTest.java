@@ -73,7 +73,7 @@ class WalletLostUpdateReproductionTest extends AbstractIntegrationTest {
 
     assertThat(results.failures()).as("잔액 10,000 에 3,000 씩이라 아무도 거절되지 않는다").isEmpty();
     assertThat(results.successCount()).isEqualTo(WORKERS);
-    assertApproved(results.successes());
+    assertApproved(WORKERS);
 
     assertThat(balanceOf(Seeds.MEMBER_ID_1))
         .as("네 트랜잭션이 모두 10,000 을 읽고 7,000 이라는 같은 절대값을 저장했다")
@@ -107,7 +107,7 @@ class WalletLostUpdateReproductionTest extends AbstractIntegrationTest {
 
     assertThat(results.failures()).isEmpty();
     assertThat(results.successCount()).isEqualTo(2);
-    assertThat(currentStatus(paymentKey)).isEqualTo("DONE");
+    assertApproved(1);
 
     assertThat(ledgerSumOf(Seeds.MEMBER_ID_1))
         .as("원장은 둘 다 남는다 - 10,000 + 5,000 - 3,000")
@@ -134,20 +134,14 @@ class WalletLostUpdateReproductionTest extends AbstractIntegrationTest {
     return paymentKeys;
   }
 
-  /** 성공 경로는 상태 전이까지 확인한다. 잔액과 원장만 보면 DONE 유실을 놓친다 ({@code docs/plan/S2.md} 2.3). */
-  private void assertApproved(List<Payment> approved) {
-    List<String> paymentKeys = approved.stream().map(Payment::getPaymentKey).toList();
+  /** 성공 경로는 상태 전이까지 확인한다. 잔액과 원장만 보면 DONE·approved_at 유실을 놓친다 ({@code docs/plan/S2.md} 2.3). */
+  private void assertApproved(int expected) {
     assertThat(
             jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM payment WHERE status = 'DONE' AND approved_at IS NOT NULL",
                 Integer.class))
         .as("성공한 결제는 DONE 이고 approved_at 이 남는다")
-        .isEqualTo(paymentKeys.size());
-  }
-
-  private String currentStatus(String paymentKey) {
-    return jdbcTemplate.queryForObject(
-        "SELECT status FROM payment WHERE payment_key = ?", String.class, paymentKey);
+        .isEqualTo(expected);
   }
 
   private long balanceOf(long memberId) {

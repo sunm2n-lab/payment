@@ -10,7 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * <p>충전의 잔액 변경은 {@link WalletBalanceUpdater} 가 소유한다. 승인 차감과 충전은 "지갑 잔액을 바꾸고 원장을 남긴다" 하나로 묶이고, S2 에서
  * 그 방식이 전략으로 갈라졌기 때문이다. 지갑을 <b>찾는 것까지</b> 전략에 맡긴다 — 잠금 없이 읽을지 {@code FOR UPDATE} 로 잠그며 읽을지가 전략의
- * 일부다. 여기서 먼저 읽어 두면 잠그기 전의 값을 들고 있게 된다.
+ * 일부라, 조회 경로를 한곳에 모아 둔다.
  *
  * <p>조회 -> 잔액 변경 -> 원장 INSERT 는 반드시 한 서비스 트랜잭션 안이어야 한다. {@code open-in-view: false} 라 트랜잭션이 없으면
  * repository 호출이 끝나는 순간 지갑 엔티티가 detached 되어 더티체킹이 일어나지 않고, 원장만 INSERT 되어 정상 흐름에서도 "잔액 == 원장 합계" 가
