@@ -137,26 +137,34 @@ public class ConcurrencyStrategyConfig {
         RetryingPaymentConfirmer.Sleeper.real());
   }
 
+  /** S2-b 비관적 락 — 본선 전략. 승인과 충전이 같은 방식으로 지갑을 잠근다. */
+  @Bean
+  PessimisticLockWalletBalanceUpdater pessimisticLockWalletBalanceUpdater(
+      WalletRepository walletRepository, WalletLedgerRepository walletLedgerRepository) {
+    return new PessimisticLockWalletBalanceUpdater(walletRepository, walletLedgerRepository);
+  }
+
   /**
    * 본선 승인. {@link PaymentService} 가 이 빈에 위임한다.
    *
-   * <p>차감 전략은 아직 naive 다 — S2 의 차감 유실이 그대로 남아 있다. 비관적 락으로 바꾸는 것이 S2-b 다.
+   * <p>S2-b 의 결론을 적용해 차감 전략을 비관적 락으로 올렸다. 재현은 {@link #naiveDebitConfirmer} 가 계속 naive 를 가리키므로 여기를
+   * 바꿔도 사라지지 않는다.
    */
   @Bean
   @Primary
   PaymentConfirmer casPaymentConfirmer(
       PaymentSupport support,
       PaymentRepository paymentRepository,
-      NaiveWalletBalanceUpdater naiveUpdater) {
-    return new CasPaymentConfirmer(support, paymentRepository, naiveUpdater);
+      PessimisticLockWalletBalanceUpdater pessimisticUpdater) {
+    return new CasPaymentConfirmer(support, paymentRepository, pessimisticUpdater);
   }
 
-  /** 본선 충전. {@code WalletController} 와 대부분의 테스트가 이 빈을 쓴다. 전략은 승인과 같은 이유로 아직 naive 다. */
+  /** 본선 충전. {@code WalletController} 와 대부분의 테스트가 이 빈을 쓴다. */
   @Bean
   @Primary
   WalletService walletService(
-      WalletRepository walletRepository, NaiveWalletBalanceUpdater naiveUpdater) {
-    return new WalletService(walletRepository, naiveUpdater);
+      WalletRepository walletRepository, PessimisticLockWalletBalanceUpdater pessimisticUpdater) {
+    return new WalletService(walletRepository, pessimisticUpdater);
   }
 
   /** 충전 경쟁 재현용. 본선이 바뀌어도 이 빈은 Phase 0 의 충전 경로를 유지한다. */

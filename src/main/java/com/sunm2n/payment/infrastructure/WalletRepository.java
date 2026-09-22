@@ -1,16 +1,38 @@
 package com.sunm2n.payment.infrastructure;
 
 import com.sunm2n.payment.domain.Wallet;
+import jakarta.persistence.LockModeType;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface WalletRepository extends JpaRepository<Wallet, Long> {
 
-  /** 잠금 없는 일반 조회. Phase 0 은 비관적/낙관적 락을 의도적으로 넣지 않는다 — S2 의 Lost Update 실습 대상이다. */
+  /** 잠금 없는 일반 조회. 재현 경로(naive 충전)와 단건 조회가 쓴다 — S2 의 Lost Update 가 여기서 보인다. */
   Optional<Wallet> findByMemberId(Long memberId);
+
+  /**
+   * S2-b 비관적 락 — 행을 잠그며 읽는다. 잠근 뒤에 검사·변경하므로 그 사이에 끼어들 수 없다.
+   *
+   * <pre>SELECT ... FROM wallet WHERE id = ? FOR UPDATE</pre>
+   *
+   * <p>이 조회 <b>앞에</b> 같은 지갑을 평범하게 읽어 두면 안 된다. 영속성 컨텍스트에 이미 있는 엔티티는 이 조회의 결과로 상태가 갱신되지 않으므로, 락은 잡았는데
+   * 값은 잠그기 전의 것이 된다. 그래서 잠금 조회를 전략 안에 두고 그 앞에서는 id 만 찾는다.
+   */
+  @Lock(LockModeType.PESSIMISTIC_WRITE)
+  @Query("SELECT w FROM Wallet w WHERE w.id = :id")
+  Optional<Wallet> findByIdForUpdate(@Param("id") Long id);
+
+  /**
+   * 잔액을 읽지 않고 지갑 id 만 찾는다. 비관적 락 충전이 {@code FOR UPDATE} 조회 <b>앞에</b> 쓰는 조회다.
+   *
+   * <p>잔액을 읽는 시점이 아니므로 동기화 지점도 아니다.
+   */
+  @Query("SELECT w.id FROM Wallet w WHERE w.memberId = :memberId")
+  Optional<Long> findIdByMemberId(@Param("memberId") Long memberId);
 
   /**
    * 잔액만 읽는 스칼라 조회. S2 비교 실험 1·2 의 "검사" 읽기다.
