@@ -14,6 +14,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 
 /**
  * S1 재현 — 같은 결제가 두 번 승인된다.
@@ -25,6 +26,9 @@ import org.springframework.beans.factory.annotation.Autowired;
  * 성격이며, 개선 후에도 naive 구현이 계속 이 결과를 내는지 확인하는 기록이 된다.
  *
  * <p>워커는 5개다. 게이트에서 대기하는 워커가 각자 커넥션을 점유하므로 {@code maximum-pool-size} 10 보다 작아야 한다.
+ *
+ * <p>승인은 {@link NaivePaymentConfirmer} 를 직접 호출한다. 기본 구현은 S1 에서 조건부 UPDATE 로 바뀌었으므로 {@link
+ * PaymentService} 를 거치면 개선된 경로를 타게 된다. 실패 버전을 코드에 남겨 둔 이유가 바로 이 재현을 계속 실행하기 위해서다.
  */
 class DuplicateConfirmReproductionTest extends AbstractIntegrationTest {
 
@@ -35,6 +39,10 @@ class DuplicateConfirmReproductionTest extends AbstractIntegrationTest {
 
   @Autowired private PaymentService paymentService;
   @Autowired private WalletService walletService;
+
+  @Autowired
+  @Qualifier("naivePaymentConfirmer")
+  private PaymentConfirmer naiveConfirmer;
 
   private Long merchantId;
 
@@ -100,7 +108,7 @@ class DuplicateConfirmReproductionTest extends AbstractIntegrationTest {
 
   private ConcurrentRunner.Results<Payment> confirmConcurrently(String paymentKey) {
     return ConcurrentRunner.run(
-        WORKERS, () -> paymentService.confirm(merchantId, paymentKey, ORDER_ID, AMOUNT));
+        WORKERS, () -> naiveConfirmer.confirm(merchantId, paymentKey, ORDER_ID, AMOUNT));
   }
 
   private String currentStatus(String paymentKey) {
