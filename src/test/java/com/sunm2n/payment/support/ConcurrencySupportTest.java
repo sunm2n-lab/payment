@@ -2,7 +2,9 @@ package com.sunm2n.payment.support;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.time.Duration;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -73,6 +75,26 @@ class ConcurrencySupportTest {
     gate.reset();
 
     assertThatCode(() -> gate.pass(ConcurrencyGate.PAYMENT_READ)).doesNotThrowAnyException();
+  }
+
+  @Test
+  @DisplayName("제한 시간 안에 끝나지 않으면 실패하고, 워커를 취소한 뒤 실제 종료까지 확인한다")
+  void runnerCancelsAndConfirmsTerminationOnTimeout() {
+    assertThatThrownBy(
+            () ->
+                ConcurrentRunner.run(
+                    WORKERS,
+                    Duration.ofSeconds(1),
+                    () -> {
+                      Thread.sleep(Duration.ofSeconds(20).toMillis());
+                      return "끝나지 않는다";
+                    }))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("끝나지 않았다");
+
+    assertThatCode(ConcurrentRunner::verifyNoRunawayWorkers)
+        .as("취소에 응답한 워커는 남지 않으므로 이후 테스트를 막지 않는다")
+        .doesNotThrowAnyException();
   }
 
   @Test

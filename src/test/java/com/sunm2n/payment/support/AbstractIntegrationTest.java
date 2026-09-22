@@ -52,9 +52,13 @@ public abstract class AbstractIntegrationTest {
    *
    * <p>게이트 해제를 실행 헬퍼가 아니라 여기에 두는 이유는, 게이트를 무장한 테스트가 동시 실행에 도달하기 전에 실패할 수도 있기 때문이다. 앞선 테스트가 어떻게 끝났든
    * 다음 테스트는 무장되지 않은 게이트로 시작한다.
+   *
+   * <p>TRUNCATE 보다 먼저 살아남은 워커가 없는지 확인한다. 게이트 해제와는 별개의 문제다 — 끝나지 않은 워커가 뒤늦게 커밋하면 이 정리와 겹쳐, 원인이 앞
+   * 테스트에 있는데 다른 테스트가 깨진다.
    */
   @BeforeEach
   void resetDatabaseAndFakes() {
+    ConcurrentRunner.verifyNoRunawayWorkers();
     DatabaseCleaner.truncateAll(jdbcTemplate);
     SeedRunner.executeSeed(dataSource);
     fakeCardApprovalClient.reset();
