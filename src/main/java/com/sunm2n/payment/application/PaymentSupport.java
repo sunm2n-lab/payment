@@ -1,19 +1,15 @@
 package com.sunm2n.payment.application;
 
-import com.sunm2n.payment.domain.LedgerType;
 import com.sunm2n.payment.domain.Payment;
 import com.sunm2n.payment.domain.PaymentMethod;
 import com.sunm2n.payment.domain.PaymentStatus;
 import com.sunm2n.payment.domain.Wallet;
-import com.sunm2n.payment.domain.WalletLedger;
-import com.sunm2n.payment.domain.exception.InsufficientBalanceException;
 import com.sunm2n.payment.domain.exception.InvalidPaymentStatusException;
 import com.sunm2n.payment.domain.exception.PaymentMismatchException;
 import com.sunm2n.payment.domain.exception.PaymentNotFoundException;
 import com.sunm2n.payment.infrastructure.CardApproval;
 import com.sunm2n.payment.infrastructure.CardApprovalClient;
 import com.sunm2n.payment.infrastructure.PaymentRepository;
-import com.sunm2n.payment.infrastructure.WalletLedgerRepository;
 import com.sunm2n.payment.infrastructure.WalletRepository;
 import java.time.LocalDateTime;
 import org.springframework.stereotype.Component;
@@ -31,17 +27,14 @@ public class PaymentSupport {
 
   private final PaymentRepository paymentRepository;
   private final WalletRepository walletRepository;
-  private final WalletLedgerRepository walletLedgerRepository;
   private final CardApprovalClient cardApprovalClient;
 
   public PaymentSupport(
       PaymentRepository paymentRepository,
       WalletRepository walletRepository,
-      WalletLedgerRepository walletLedgerRepository,
       CardApprovalClient cardApprovalClient) {
     this.paymentRepository = paymentRepository;
     this.walletRepository = walletRepository;
-    this.walletLedgerRepository = walletLedgerRepository;
     this.cardApprovalClient = cardApprovalClient;
   }
 
@@ -91,21 +84,19 @@ public class PaymentSupport {
    *
    * <p>CARD 승인 호출은 SCENARIO 대로 호출자의 트랜잭션 안에서 한다. 외부 호출 동안 커넥션과 락을 붙들고 있는 문제는 S8 에서 다룬다.
    *
-   * <p>잔액 차감은 "읽고 -> 검사하고 -> 계산한 값을 저장한다" 그대로다. 원자적 감산으로 바꾸면 S2 의 차감 유실 실습이 사라진다.
+   * <p>차감 방식은 {@link WalletBalanceUpdater} 가 소유한다. S2 에서 전략이 다섯으로 갈라지면서 분리했고, 전략은 <b>호출자가 넘긴다.</b>
+   *
+   * <p>차감을 전략에 맡겨도 DONE 전이는 여기 <b>마지막에</b> 남는다. 그래서 전략이 영속성 컨텍스트를 비우면(예: {@code @Modifying(
+   * clearAutomatically = true)}) 관리 중이던 이 엔티티가 detached 되어 상태 전이와 {@code approved_at} 이 통째로 유실된다 —
+   * 결제가 {@code IN_PROGRESS} 로 커밋되는 사고다. 그래서 원자적 UPDATE 를 쓰는 전략은 {@code Wallet} 엔티티를 아예 로드하지 않는다
+   * ({@code docs/plan/S2.md} 2.3).
    */
-  public Payment approve(Payment payment, long amount) {
+  public Payment approve(Payment payment, long amount, WalletBalanceUpdater updater) {
     if (payment.getMethod() == PaymentMethod.CARD) {
       CardApproval approval = cardApprovalClient.approve(payment.getPaymentKey(), amount);
       payment.setCardApprovalNo(approval.approvalNo());
     } else {
-      Wallet wallet = loadWallet(payment);
-      if (wallet.getBalance() < amount) {
-        throw new InsufficientBalanceException(wallet.getId(), wallet.getBalance(), amount);
-      }
-      // 차감에는 Amounts 를 쓰지 않는다. 음수 잔액은 S2 의 관찰 대상이다.
-      wallet.setBalance(wallet.getBalance() - amount);
-      walletLedgerRepository.save(
-          new WalletLedger(wallet.getId(), LedgerType.PAY, -amount, payment.getId()));
+      updater.debit(payment.getWalletId(), payment.getId(), amount);
     }
 
     payment.setStatus(PaymentStatus.DONE);
@@ -113,7 +104,12 @@ public class PaymentSupport {
     return payment;
   }
 
-  /** 생성 시점에 확정된 wallet_id 다. 여기서 없다면 데이터 불일치이므로 예상 밖 오류(5xx)로 둔다. */
+  /**
+   * 취소의 REFUND 경로가 쓰는 지갑 조회. 생성 시점에 확정된 wallet_id 이며, 여기서 없다면 데이터 불일치이므로 예상 밖 오류(5xx)로 둔다.
+   *
+   * <p>승인 경로는 더 이상 이 메서드를 쓰지 않는다. 지갑을 어떻게 읽느냐가 전략의 일부이기 때문이다 (잠금 없이 읽을지, {@code FOR UPDATE} 로 잠그며
+   * 읽을지, 아예 엔티티로 읽지 않을지). 취소에 같은 결론을 적용하는 것은 S3 다.
+   */
   public Wallet loadWallet(Payment payment) {
     return walletRepository
         .findById(payment.getWalletId())

@@ -3,8 +3,6 @@ package com.sunm2n.payment.application;
 import com.sunm2n.payment.domain.Payment;
 import com.sunm2n.payment.domain.exception.InvalidPaymentStatusException;
 import com.sunm2n.payment.infrastructure.PaymentRepository;
-import org.springframework.context.annotation.Primary;
-import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
@@ -16,17 +14,21 @@ import org.springframework.transaction.annotation.Transactional;
  * 요청은 조건을 <b>재평가</b>해 0 건 갱신으로 탈락한다.
  *
  * <p>후보 비교와 선택 이유는 {@code docs/phase1/S1.md} 에 있다.
+ *
+ * <p>이 구현이 막는 것은 <b>같은 결제</b>의 경쟁뿐이다. 조건부 UPDATE 가 잠그는 것은 {@code payment} 행 하나이므로, 서로 다른 결제가 같은 지갑을
+ * 건드리는 S2 의 경쟁은 잔액 변경 전략이 맡는다. 그 전략을 주입받으며, 조합은 {@link ConcurrencyStrategyConfig} 에 있다.
  */
-@Service
-@Primary
 public class CasPaymentConfirmer implements PaymentConfirmer {
 
   private final PaymentSupport support;
   private final PaymentRepository paymentRepository;
+  private final WalletBalanceUpdater updater;
 
-  public CasPaymentConfirmer(PaymentSupport support, PaymentRepository paymentRepository) {
+  public CasPaymentConfirmer(
+      PaymentSupport support, PaymentRepository paymentRepository, WalletBalanceUpdater updater) {
     this.support = support;
     this.paymentRepository = paymentRepository;
+    this.updater = updater;
   }
 
   @Override
@@ -43,6 +45,6 @@ public class CasPaymentConfirmer implements PaymentConfirmer {
     // CAS 가 영속성 컨텍스트를 비웠으므로 위 엔티티는 detached 다. 자기 트랜잭션의 변경은 자기에게 보이므로
     // 재조회하면 IN_PROGRESS 상태의 결제를 얻는다.
     Payment inProgress = support.findOwnedPayment(merchantId, paymentKey);
-    return support.approve(inProgress, amount);
+    return support.approve(inProgress, amount, updater);
   }
 }

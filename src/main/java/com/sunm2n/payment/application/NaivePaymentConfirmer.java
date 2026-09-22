@@ -1,7 +1,6 @@
 package com.sunm2n.payment.application;
 
 import com.sunm2n.payment.domain.Payment;
-import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
@@ -11,14 +10,17 @@ import org.springframework.transaction.annotation.Transactional;
  * paymentKey} 로 동시에 들어온 승인이 모두 READY 를 읽고 모두 성공한다 — S1 의 재현 대상이다.
  *
  * <p>개선 후에도 남겨 둔다. {@code DuplicateConfirmReproductionTest} 가 이 빈을 직접 호출해 과거의 실패를 계속 재현한다.
+ *
+ * <p>잔액 변경 전략은 주입받는다. 빈 등록과 조합은 {@link ConcurrencyStrategyConfig} 에 있다.
  */
-@Service
 public class NaivePaymentConfirmer implements PaymentConfirmer {
 
   private final PaymentSupport support;
+  private final WalletBalanceUpdater updater;
 
-  public NaivePaymentConfirmer(PaymentSupport support) {
+  public NaivePaymentConfirmer(PaymentSupport support, WalletBalanceUpdater updater) {
     this.support = support;
+    this.updater = updater;
   }
 
   @Override
@@ -27,6 +29,6 @@ public class NaivePaymentConfirmer implements PaymentConfirmer {
     Payment payment = support.findOwnedPayment(merchantId, paymentKey);
     support.validateApprovable(payment);
     support.validateRequest(payment, orderId, amount);
-    return support.approve(payment, amount);
+    return support.approve(payment, amount, updater);
   }
 }
