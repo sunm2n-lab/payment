@@ -59,10 +59,13 @@ public class ConcurrencyGateConfig {
               // 잠그며 읽는 조회는 호출 직전에만 걸 수 있다. 반환 직후는 영영 모이지 않는다.
               Map.of("findByIdForUpdate", ConcurrencyGate.WALLET_LOCK_ATTEMPT),
               // findByMemberId 는 naive 충전이 잔액을 읽는 경로다. 결제 생성(MONEY)도 이 지점을 지난다.
+              // findBalanceById 는 원자적 감산 전략이 검사용으로 읽는 지점이다.
               Map.of(
                   "findById",
                   ConcurrencyGate.WALLET_READ,
                   "findByMemberId",
+                  ConcurrencyGate.WALLET_READ,
+                  "findBalanceById",
                   ConcurrencyGate.WALLET_READ));
         }
         return bean;

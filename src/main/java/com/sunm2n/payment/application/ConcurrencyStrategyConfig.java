@@ -50,6 +50,25 @@ public class ConcurrencyStrategyConfig {
     return new CasPaymentConfirmer(support, paymentRepository, naiveUpdater);
   }
 
+  /** S2 비교 실험 1 — 검사 후 원자적 감산. 차감 유실은 사라지지만 잔액이 음수가 된다. */
+  @Bean
+  AtomicDecrementWalletBalanceUpdater atomicDecrementWalletBalanceUpdater(
+      WalletRepository walletRepository,
+      WalletLedgerRepository walletLedgerRepository,
+      NaiveWalletBalanceUpdater naiveUpdater) {
+    return new AtomicDecrementWalletBalanceUpdater(
+        walletRepository, walletLedgerRepository, naiveUpdater);
+  }
+
+  /** 비교 실험 1 의 배선 — CAS 승인 + 원자적 감산. */
+  @Bean
+  PaymentConfirmer atomicDebitConfirmer(
+      PaymentSupport support,
+      PaymentRepository paymentRepository,
+      AtomicDecrementWalletBalanceUpdater atomicUpdater) {
+    return new CasPaymentConfirmer(support, paymentRepository, atomicUpdater);
+  }
+
   /**
    * 본선 승인. {@link PaymentService} 가 이 빈에 위임한다.
    *
