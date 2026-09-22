@@ -5,7 +5,10 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Duration;
+import java.util.Map;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -17,6 +20,9 @@ import org.junit.jupiter.api.Test;
 class ConcurrencySupportTest {
 
   private static final int WORKERS = 3;
+
+  /** 직접 만든 워커를 풀어 준 뒤 종료를 기다리는 시간. */
+  private static final Duration WORKER_STOP_GRACE = Duration.ofSeconds(5);
 
   @Test
   @DisplayName("무장하지 않은 게이트는 아무 일도 하지 않는다")
@@ -65,6 +71,50 @@ class ConcurrencySupportTest {
 
     assertThat(results.failures()).isEmpty();
     assertThat(results.successCount()).isEqualTo(WORKERS);
+  }
+
+  @Test
+  @DisplayName("호출 직전 게이트는 대상 메서드 본문에 들어가기 전에 참가자를 모은다")
+  void beforeCallGateBlocksAheadOfTheMethodBody() throws Exception {
+    ConcurrencyGate gate = new ConcurrencyGate();
+    gate.arm(ConcurrencyGate.WALLET_LOCK_ATTEMPT, 2);
+    AtomicInteger bodyStarted = new AtomicInteger();
+    CountDownLatch bodyMayReturn = new CountDownLatch(1);
+
+    // 잠그며 읽는 조회를 흉내 낸다. 한 번 들어가면 테스트가 풀어 줄 때까지 나오지 않는다 - 락을 쥔 채 머무는 것과 같다.
+    LockingRead target =
+        () -> {
+          bodyStarted.incrementAndGet();
+          bodyMayReturn.await();
+          return "잠갔다";
+        };
+    LockingRead proxied =
+        (LockingRead)
+            ConcurrencyGateConfig.gated(
+                target,
+                LockingRead.class,
+                () -> gate,
+                Map.of("read", ConcurrencyGate.WALLET_LOCK_ATTEMPT),
+                Map.of());
+
+    AtomicReference<String> read = new AtomicReference<>();
+    Thread worker = new Thread(() -> read.set(call(proxied)));
+    worker.setDaemon(true);
+    worker.start();
+
+    try {
+      // 반환 직후에 걸렸다면 워커는 본문 안에서 멈춰 있고 이 대기는 제한 시간까지 풀리지 않는다.
+      gate.pass(ConcurrencyGate.WALLET_LOCK_ATTEMPT);
+    } finally {
+      // 이 워커는 직접 만든 스레드라 ConcurrentRunner 의 runaway 검사가 잡아 주지 않는다. 위가 실패하더라도
+      // 본문 안에 남겨 두지 않고 여기서 풀어 준 뒤 실제 종료까지 확인한다.
+      bodyMayReturn.countDown();
+      worker.join(WORKER_STOP_GRACE.toMillis());
+    }
+
+    assertThat(worker.isAlive()).as("워커를 남기지 않는다").isFalse();
+    assertThat(bodyStarted).as("게이트를 통과한 뒤에야 본문이 실행된다").hasValue(1);
+    assertThat(read).hasValue("잠갔다");
   }
 
   @Test
@@ -122,5 +172,20 @@ class ConcurrencySupportTest {
     assertThat(results.failuresOtherThan(IllegalStateException.class))
         .singleElement()
         .isInstanceOf(UnsupportedOperationException.class);
+  }
+
+  private static String call(LockingRead read) {
+    try {
+      return read.read();
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new IllegalStateException("조회 대기 중 인터럽트", e);
+    }
+  }
+
+  /** 잠그며 읽는 조회를 대신하는 최소 인터페이스. JDK 동적 프록시라 인터페이스가 필요하다. */
+  private interface LockingRead {
+
+    String read() throws InterruptedException;
   }
 }

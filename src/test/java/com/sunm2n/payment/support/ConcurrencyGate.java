@@ -25,8 +25,20 @@ public class ConcurrencyGate {
   /** {@code PaymentRepository.findByPaymentKey} 반환 직후 — 모두 같은 상태를 읽은 시점. */
   public static final String PAYMENT_READ = "payment-read";
 
-  /** {@code WalletRepository.findById} 반환 직후 — 모두 같은 잔액을 읽은 시점. */
+  /** 지갑 잔액 조회 반환 직후 — 모두 같은 잔액을 읽은 시점. */
   public static final String WALLET_READ = "wallet-read";
+
+  /**
+   * {@code WalletRepository.findByIdForUpdate} <b>호출 직전</b> — 아직 아무도 wallet 락을 잡지 않은 시점.
+   *
+   * <p>잠그며 읽는 조회의 <b>반환 직후</b>에는 게이트를 걸 수 없다. 먼저 X 락을 잡은 워커가 여기서 대기하는 동안 나머지는 락에 막혀 게이트에 도달하지 못하고,
+   * 참가자가 모이지 않아 테스트가 영영 멈춘다.
+   *
+   * <p>이 게이트가 보장하는 것은 <b>참가자 누구도 아직 wallet 락을 획득하지 않았다</b>는 것뿐이다. 그 시점에 각 워커가 이미 어떤 락을 들고 있는지는 경로마다
+   * 다르다 — 승인 워커는 S1 의 CAS 로 payment 의 X 락을 이미 보유한다. 또한 DB 락 <b>대기</b>가 실제로 일어났다는 증거도 아니다. 동시 출발만
+   * 보장한다.
+   */
+  public static final String WALLET_LOCK_ATTEMPT = "wallet-lock-attempt";
 
   private static final Duration TIMEOUT = Duration.ofSeconds(10);
 
