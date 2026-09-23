@@ -82,7 +82,7 @@ cancel(paymentKey, cancelAmount)
   - 각 테이블 PK, `payment(payment_key)` unique, `wallet(member_id)` unique, `merchant(api_key)` unique
   - **FK는 생성하지 않는다.** 원장 INSERT의 FK 검사 락이 S1/S2의 차감 유실 실험에 섞이는 것을 막는다. `wallet_ledger.wallet_id → wallet.id` FK는 S4에서 처음 추가
   - **payment의 `merchant_id`, `order_id`, `(merchant_id, order_id)` 인덱스는 S6 이전에 만들지 않는다.** 가맹점별 주문 유일성은 도메인상 필요하지만, 제약 도입은 S6의 개선 단계로 미룬다
-- Spring Data JPA + 엔티티 + 레이어드 패키지 (`api` / `application` / `domain` / `infrastructure`)
+- Spring Data JPA + 엔티티 + 레이어드 패키지 (`api` / `application` / `domain` / `infrastructure`) — 이후 #21 에서 업무별 패키지(`com.sunm2n.pay.<업무>.<계층>`)로 재배치했다. 현재 구조는 [STRUCTURE.md](STRUCTURE.md)
 - `CardApprovalClient` 인터페이스 + `FakeCardApprovalClient` (항상 성공, 승인번호 발급)
 - 정상 흐름 통합 테스트 (Testcontainers MySQL): 생성 → 승인 → 부분취소 → 조회
 - k6 스크립트 뼈대 (`load/`): 결제 생성 + 승인 반복
