@@ -6,6 +6,7 @@
 
 - [학습 시나리오](docs/SCENARIO.md)
 - [패키지 구조](docs/STRUCTURE.md) — 업무별 배치 규칙, 의존 방향, 테스트 배치
+- [API 응답 규약](docs/API_CONTRACT.md) — 성공·실패 형식, 오류 코드, 판정 순서
 
 ## 환경
 
