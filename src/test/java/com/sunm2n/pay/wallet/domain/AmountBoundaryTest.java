@@ -1,4 +1,4 @@
-package com.sunm2n.pay.application;
+package com.sunm2n.pay.wallet.domain;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;

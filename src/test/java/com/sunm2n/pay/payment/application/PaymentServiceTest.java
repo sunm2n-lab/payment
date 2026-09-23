@@ -1,9 +1,8 @@
-package com.sunm2n.pay.application;
+package com.sunm2n.pay.payment.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.sunm2n.pay.payment.application.PaymentService;
 import com.sunm2n.pay.payment.domain.Payment;
 import com.sunm2n.pay.payment.domain.PaymentMethod;
 import com.sunm2n.pay.payment.domain.PaymentStatus;

@@ -1,4 +1,4 @@
-package com.sunm2n.pay.application;
+package com.sunm2n.pay.concurrency;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -30,7 +30,8 @@ import org.springframework.beans.factory.annotation.Qualifier;
  * 롤백</b>되므로 {@code IN_PROGRESS} 전이도 취소되고, 재시도는 다시 {@code READY} 를 보고 CAS 를 통과한다.
  *
  * <p>이 테스트가 보는 범위는 <b>1차 시도 충돌 → 전체 롤백 → 재시도 성공</b>과 최종 상태다. 게이트는 스레드당 한 번만 막으므로 2차 시도부터는 워커들이 흩어지고
- * 충돌 횟수가 결정적이지 않다. 최대 시도·상한 초과·지연은 {@link RetryPolicyTest} 가 통제된 delegate 로 확인한다.
+ * 충돌 횟수가 결정적이지 않다. 최대 시도·상한 초과·지연은 {@link
+ * com.sunm2n.pay.payment.application.confirmation.RetryPolicyTest} 가 통제된 delegate 로 확인한다.
  *
  * <p>충돌 <b>하한</b>은 결정적이다. 1차 시도에서 넷이 같은 버전을 읽으므로 커밋에 성공하는 것은 하나뿐이고, 나머지 3건은 반드시 충돌한다.
  */
