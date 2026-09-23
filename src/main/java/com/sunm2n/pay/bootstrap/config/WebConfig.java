@@ -1,6 +1,6 @@
 package com.sunm2n.pay.bootstrap.config;
 
-import com.sunm2n.pay.api.MerchantAuthInterceptor;
+import com.sunm2n.pay.merchant.api.auth.MerchantAuthInterceptor;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;

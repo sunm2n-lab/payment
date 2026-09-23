@@ -1,6 +1,6 @@
-package com.sunm2n.pay.api;
+package com.sunm2n.pay.merchant.api.auth;
 
-import com.sunm2n.pay.domain.Merchant;
+import com.sunm2n.pay.merchant.domain.Merchant;
 import org.springframework.stereotype.Component;
 import org.springframework.web.context.annotation.RequestScope;
 

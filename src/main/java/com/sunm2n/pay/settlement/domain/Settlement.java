@@ -1,4 +1,4 @@
-package com.sunm2n.pay.domain;
+package com.sunm2n.pay.settlement.domain;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;

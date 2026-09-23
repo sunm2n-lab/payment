@@ -1,4 +1,4 @@
-package com.sunm2n.pay.api;
+package com.sunm2n.pay.merchant.api.auth;
 
 /**
  * {@code X-API-Key} 가 없거나 등록되지 않은 키다.

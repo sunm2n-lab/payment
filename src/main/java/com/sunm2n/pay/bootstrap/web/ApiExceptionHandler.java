@@ -1,6 +1,5 @@
 package com.sunm2n.pay.bootstrap.web;
 
-import com.sunm2n.pay.api.UnauthorizedMerchantException;
 import com.sunm2n.pay.common.exception.DomainException;
 import com.sunm2n.pay.common.web.error.ErrorResponse;
 import com.sunm2n.pay.domain.exception.BalanceOverflowException;
@@ -10,6 +9,7 @@ import com.sunm2n.pay.domain.exception.InvalidPaymentStatusException;
 import com.sunm2n.pay.domain.exception.PaymentMismatchException;
 import com.sunm2n.pay.domain.exception.PaymentNotFoundException;
 import com.sunm2n.pay.domain.exception.WalletNotFoundException;
+import com.sunm2n.pay.merchant.api.auth.UnauthorizedMerchantException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;

@@ -1,6 +1,6 @@
-package com.sunm2n.pay.infrastructure;
+package com.sunm2n.pay.settlement.infrastructure;
 
-import com.sunm2n.pay.domain.Settlement;
+import com.sunm2n.pay.settlement.domain.Settlement;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 /** Phase 0 에서 쓰는 코드는 없다. S10 에서 처음 사용한다. */

@@ -5,6 +5,7 @@ import com.sunm2n.pay.api.dto.ConfirmPaymentRequest;
 import com.sunm2n.pay.api.dto.CreatePaymentRequest;
 import com.sunm2n.pay.api.dto.PaymentResponse;
 import com.sunm2n.pay.application.PaymentService;
+import com.sunm2n.pay.merchant.api.auth.MerchantContext;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;

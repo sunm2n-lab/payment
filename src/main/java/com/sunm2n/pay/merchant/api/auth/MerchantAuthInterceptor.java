@@ -1,7 +1,7 @@
-package com.sunm2n.pay.api;
+package com.sunm2n.pay.merchant.api.auth;
 
-import com.sunm2n.pay.domain.Merchant;
-import com.sunm2n.pay.infrastructure.MerchantRepository;
+import com.sunm2n.pay.merchant.domain.Merchant;
+import com.sunm2n.pay.merchant.infrastructure.MerchantRepository;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.stereotype.Component;

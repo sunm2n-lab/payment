@@ -1,6 +1,6 @@
-package com.sunm2n.pay.infrastructure;
+package com.sunm2n.pay.merchant.infrastructure;
 
-import com.sunm2n.pay.domain.Merchant;
+import com.sunm2n.pay.merchant.domain.Merchant;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 
