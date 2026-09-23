@@ -11,7 +11,8 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * <p>개선 후에도 남겨 둔다. {@code DuplicateConfirmReproductionTest} 가 이 빈을 직접 호출해 과거의 실패를 계속 재현한다.
  *
- * <p>잔액 변경 전략은 주입받는다. 빈 등록과 조합은 {@link ConcurrencyStrategyConfig} 에 있다.
+ * <p>잔액 변경 전략은 주입받는다. 빈 등록과 조합은 {@link com.sunm2n.pay.bootstrap.config.ConcurrencyStrategyConfig} 에
+ * 있다.
  */
 public class NaivePaymentConfirmer implements PaymentConfirmer {
 

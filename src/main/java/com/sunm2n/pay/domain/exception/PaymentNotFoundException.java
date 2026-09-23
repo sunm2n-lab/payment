@@ -1,5 +1,7 @@
 package com.sunm2n.pay.domain.exception;
 
+import com.sunm2n.pay.common.exception.DomainException;
+
 /**
  * 결제를 찾을 수 없다.
  *

@@ -1,5 +1,6 @@
 package com.sunm2n.pay.domain.exception;
 
+import com.sunm2n.pay.common.exception.DomainException;
 import com.sunm2n.pay.domain.PaymentStatus;
 
 /** 현재 상태에서 허용되지 않는 전이다. */

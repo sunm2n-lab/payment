@@ -1,5 +1,7 @@
 package com.sunm2n.pay.domain.exception;
 
+import com.sunm2n.pay.common.exception.DomainException;
+
 /** 취소 요청 금액이 잔여 금액을 넘는다. */
 public class CancelAmountExceededException extends DomainException {
 

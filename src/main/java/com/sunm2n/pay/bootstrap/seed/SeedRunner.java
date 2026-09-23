@@ -1,4 +1,4 @@
-package com.sunm2n.pay.infrastructure;
+package com.sunm2n.pay.bootstrap.seed;
 
 import java.sql.Connection;
 import javax.sql.DataSource;

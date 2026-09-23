@@ -9,8 +9,8 @@ import com.sunm2n.pay.domain.Wallet;
  * 충전 둘뿐이고 나머지는 같아야 하므로, 그 둘만 이 이음매로 뽑아낸다. {@link PaymentConfirmer} 가 "상태 전이를 어떻게 확정하느냐" 하나로 갈렸던 것과
  * 같은 방식이다.
  *
- * <p>전략은 <b>호출자가 넘긴다.</b> 구현 하나가 가변 상태로 전략을 바꾸는 방식은 쓰지 않는다. 조합은 {@link ConcurrencyStrategyConfig} 에
- * 모여 있다.
+ * <p>전략은 <b>호출자가 넘긴다.</b> 구현 하나가 가변 상태로 전략을 바꾸는 방식은 쓰지 않는다. 조합은 {@link
+ * com.sunm2n.pay.bootstrap.config.ConcurrencyStrategyConfig} 에 모여 있다.
  *
  * <p>스스로 트랜잭션을 열지 않는다. 호출자의 트랜잭션에 참여한다. 잔액 변경과 원장 INSERT 가 한 트랜잭션이어야 "잔액 == 원장 합계" 가 유지된다.
  */

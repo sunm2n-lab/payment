@@ -1,4 +1,4 @@
-package com.sunm2n.pay.domain.exception;
+package com.sunm2n.pay.common.exception;
 
 /**
  * 도메인 규칙 위반의 공통 부모.

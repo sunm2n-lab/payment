@@ -16,7 +16,8 @@ import org.springframework.transaction.annotation.Transactional;
  * repository 호출이 끝나는 순간 지갑 엔티티가 detached 되어 더티체킹이 일어나지 않고, 원장만 INSERT 되어 정상 흐름에서도 "잔액 == 원장 합계" 가
  * 깨진다. 그 경계를 여기가 소유하므로 전략은 스스로 트랜잭션을 열지 않는다.
  *
- * <p>전략을 바꾼 빈을 여럿 등록한다 ({@link ConcurrencyStrategyConfig}). 테스트 전용 오버로드를 프로덕션 시그니처에 만들지 않는다.
+ * <p>전략을 바꾼 빈을 여럿 등록한다 ({@link com.sunm2n.pay.bootstrap.config.ConcurrencyStrategyConfig}). 테스트 전용
+ * 오버로드를 프로덕션 시그니처에 만들지 않는다.
  */
 public class WalletService {
 

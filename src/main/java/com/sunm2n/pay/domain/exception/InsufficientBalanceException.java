@@ -1,5 +1,7 @@
 package com.sunm2n.pay.domain.exception;
 
+import com.sunm2n.pay.common.exception.DomainException;
+
 /** 지갑 잔액이 결제 금액보다 적다. */
 public class InsufficientBalanceException extends DomainException {
 

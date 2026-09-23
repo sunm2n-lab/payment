@@ -1,5 +1,7 @@
 package com.sunm2n.pay.domain.exception;
 
+import com.sunm2n.pay.common.exception.DomainException;
+
 /** 지갑은 Phase 0 에서 시드로만 생긴다. 지갑 생성 API 는 SCENARIO 의 API 표에 없다. */
 public class WalletNotFoundException extends DomainException {
 

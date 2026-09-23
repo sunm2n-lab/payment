@@ -1,5 +1,7 @@
 package com.sunm2n.pay.domain.exception;
 
+import com.sunm2n.pay.common.exception.DomainException;
+
 /**
  * 잔액 덧셈이 {@code long} 범위를 넘는다.
  *

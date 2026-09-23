@@ -16,7 +16,8 @@ import org.springframework.transaction.annotation.Transactional;
  * <p>후보 비교와 선택 이유는 {@code docs/phase1/S1.md} 에 있다.
  *
  * <p>이 구현이 막는 것은 <b>같은 결제</b>의 경쟁뿐이다. 조건부 UPDATE 가 잠그는 것은 {@code payment} 행 하나이므로, 서로 다른 결제가 같은 지갑을
- * 건드리는 S2 의 경쟁은 잔액 변경 전략이 맡는다. 그 전략을 주입받으며, 조합은 {@link ConcurrencyStrategyConfig} 에 있다.
+ * 건드리는 S2 의 경쟁은 잔액 변경 전략이 맡는다. 그 전략을 주입받으며, 조합은 {@link
+ * com.sunm2n.pay.bootstrap.config.ConcurrencyStrategyConfig} 에 있다.
  */
 public class CasPaymentConfirmer implements PaymentConfirmer {
 
