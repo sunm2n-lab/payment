@@ -31,7 +31,8 @@ import org.springframework.beans.factory.annotation.Qualifier;
  * <p>시딩과 정리는 계측에서 제외한다. 두 전략 모두 같은 동기화 지점({@code PAYMENT_READ})으로 출발을 맞춘 뒤, 경쟁 구간만 잰다.
  *
  * <p>낙관적 락은 <b>백오프를 바꿔 두 번</b> 잰다. 재시도 사이의 대기는 우리가 정한 값이므로, 그것을 빼지 않으면 "낙관적 락이 느리다" 가 아니라 "우리가 넣은
- * sleep 이 길다" 를 관측하고 끝난다.
+ * sleep 이 길다" 를 관측하고 끝난다. 백오프 합은 <b>설정값의 합</b>이고 워커별로 병렬로 겹치므로, 총 소요에서 빼는 식으로 쓰지 않는다 - 백오프 0 조건의 총
+ * 소요와 견줘서 본다.
  */
 class LockContentionObservationTest extends AbstractIntegrationTest {
 
@@ -119,7 +120,7 @@ class LockContentionObservationTest extends AbstractIntegrationTest {
               retryMetrics.conflicts(),
               retryMetrics.retries(),
               retryMetrics.exhausted(),
-              retryMetrics.totalDelay()));
+              retryMetrics.totalBackoff()));
     }
     return rounds;
   }
@@ -144,7 +145,7 @@ class LockContentionObservationTest extends AbstractIntegrationTest {
   private void print(String label, List<RoundStats> rounds) {
     System.out.printf(
         "%n[S2 경합 관찰] %s - 워커 %d, 결제 %,d원, 회차 %d (단일 지갑)%n", label, WORKERS, AMOUNT, ROUNDS);
-    System.out.println("회차 | 총 소요(ms) | 요청 지연 평균(ms) | 최대(ms) | 충돌 | 재시도 | 상한 초과 | 대기 합(ms)");
+    System.out.println("회차 | 총 소요(ms) | 요청 지연 평균(ms) | 최대(ms) | 충돌 | 재시도 | 상한 초과 | 백오프 합(설정, ms)");
     for (int i = 0; i < rounds.size(); i++) {
       RoundStats stats = rounds.get(i);
       System.out.printf(
@@ -162,7 +163,7 @@ class LockContentionObservationTest extends AbstractIntegrationTest {
           stats.conflicts(),
           stats.retries(),
           stats.exhausted(),
-          millis(stats.totalDelay()));
+          millis(stats.totalBackoff()));
     }
   }
 
@@ -184,5 +185,5 @@ class LockContentionObservationTest extends AbstractIntegrationTest {
       long conflicts,
       long retries,
       long exhausted,
-      Duration totalDelay) {}
+      Duration totalBackoff) {}
 }

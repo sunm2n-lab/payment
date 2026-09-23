@@ -54,7 +54,7 @@ class RetryPolicyTest {
     assertThat(metrics.retries()).isEqualTo(2);
     assertThat(metrics.exhausted()).isZero();
     assertThat(requestedDelays).as("재시도마다 고정 지연을 요청한다").containsExactly(BACKOFF, BACKOFF);
-    assertThat(metrics.totalDelay()).isEqualTo(BACKOFF.multipliedBy(2));
+    assertThat(metrics.totalBackoff()).isEqualTo(BACKOFF.multipliedBy(2));
   }
 
   @Test

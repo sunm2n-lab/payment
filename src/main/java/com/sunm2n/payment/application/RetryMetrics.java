@@ -16,7 +16,7 @@ public class RetryMetrics {
   private final AtomicLong conflicts = new AtomicLong();
   private final AtomicLong retries = new AtomicLong();
   private final AtomicLong exhausted = new AtomicLong();
-  private final AtomicLong delayNanos = new AtomicLong();
+  private final AtomicLong backoffNanos = new AtomicLong();
 
   /** 낙관적 충돌로 트랜잭션이 롤백된 횟수. */
   public long conflicts() {
@@ -33,18 +33,23 @@ public class RetryMetrics {
     return exhausted.get();
   }
 
-  /** 재시도 전에 기다린 시간의 합. */
-  public Duration totalDelay() {
-    return Duration.ofNanos(delayNanos.get());
+  /**
+   * 재시도 전에 기다리기로 <b>한</b> 시간의 합. 설정된 백오프를 더한 값이며 실제 대기를 계측한 것이 아니다.
+   *
+   * <p>여러 워커의 백오프가 <b>병렬로 겹치므로</b> 이 값을 경과 시간의 구성 요소로 읽으면 안 된다. 백오프가 차지하는 몫은 백오프를 0 으로 바꾼 같은 조건과
+   * 비교해서 본다.
+   */
+  public Duration totalBackoff() {
+    return Duration.ofNanos(backoffNanos.get());
   }
 
   void recordConflict() {
     conflicts.incrementAndGet();
   }
 
-  void recordRetry(Duration delay) {
+  void recordRetry(Duration backoff) {
     retries.incrementAndGet();
-    delayNanos.addAndGet(delay.toNanos());
+    backoffNanos.addAndGet(backoff.toNanos());
   }
 
   void recordExhausted() {
@@ -55,6 +60,6 @@ public class RetryMetrics {
     conflicts.set(0);
     retries.set(0);
     exhausted.set(0);
-    delayNanos.set(0);
+    backoffNanos.set(0);
   }
 }
