@@ -109,11 +109,11 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
   /**
    * 어느 핸들러에도 없는 예외 - "예상 밖" 의 정의다.
    *
-   * <p>원인과 스택은 서버 로그에만 남기고 클라이언트에는 고정 문구만 보낸다. 부모의 Spring MVC 예외 핸들러들보다 덜 구체적이므로 그쪽 판정을 가로채지 않는다.
+   * <p>클라이언트에는 고정 문구만 보낸다. 원인 로그는 {@link #handleExceptionInternal} 이 남긴다. 부모의 Spring MVC 예외 핸들러들보다
+   * 덜 구체적이므로 그쪽 판정을 가로채지 않는다.
    */
   @ExceptionHandler(Exception.class)
   public ResponseEntity<Object> handleUnexpected(Exception e, WebRequest request) {
-    log.error("처리되지 않은 예외", e);
     return error(
         e,
         HttpStatus.INTERNAL_SERVER_ERROR,
@@ -157,6 +157,26 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
       WebRequest request) {
     return handleExceptionInternal(
         ex, new ErrorResponse("INVALID_REQUEST", "요청 본문을 해석할 수 없습니다."), headers, status, request);
+  }
+
+  /**
+   * 5xx 로 응답하는 모든 예외의 원인과 스택을 ERROR 로 남긴다.
+   *
+   * <p>catch-all 만이 아니라 부모가 500 으로 판정하는 Spring MVC 예외({@code MissingPathVariableException} 등)도 여기를
+   * 지난다. 부모는 이들을 로그 없이 응답하므로, 로깅을 catch-all 에 두면 클라이언트에는 고정 문구만 가고 서버에는 근거가 남지 않는다. 5xx 는 "예상 밖" 의
+   * 정의이므로 500 에 한정하지 않는다.
+   */
+  @Override
+  protected ResponseEntity<Object> handleExceptionInternal(
+      Exception ex,
+      Object body,
+      HttpHeaders headers,
+      HttpStatusCode statusCode,
+      WebRequest request) {
+    if (statusCode.is5xxServerError()) {
+      log.error("서버 오류로 응답한 예외 (status={})", statusCode.value(), ex);
+    }
+    return super.handleExceptionInternal(ex, body, headers, statusCode, request);
   }
 
   /**

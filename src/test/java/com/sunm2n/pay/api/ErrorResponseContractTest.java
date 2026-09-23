@@ -18,10 +18,13 @@ import org.hamcrest.Matchers;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.NullSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.boot.test.context.TestComponent;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
@@ -30,6 +33,7 @@ import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -186,6 +190,7 @@ class ErrorResponseContractTest extends AbstractApiTest {
    */
   @Nested
   @DisplayName("500 - 예상 밖 오류")
+  @ExtendWith(OutputCaptureExtension.class)
   class Unexpected {
 
     private final MockMvc standalone =
@@ -214,6 +219,36 @@ class ErrorResponseContractTest extends AbstractApiTest {
     }
 
     @Test
+    @DisplayName("핸들러에 없는 예외는 원인과 스택을 ERROR 로그로 한 번 남긴다")
+    void unhandledExceptionIsLogged(CapturedOutput output) throws Exception {
+      standalone.perform(get("/boom")).andExpect(status().isInternalServerError());
+
+      assertLoggedOnce(output, "java.lang.IllegalStateException: " + ThrowingController.SECRET);
+    }
+
+    /**
+     * Spring MVC 가 500 으로 판정하는 예외는 catch-all 이 아니라 부모의 구체 핸들러가 받는다. 부모는 ERROR 로그를 남기지 않으므로 여기서 빠지면
+     * 클라이언트에 고정 문구만 가고 서버에는 아무 근거도 남지 않는다.
+     */
+    @Test
+    @DisplayName("Spring MVC 가 판정한 500 도 같은 본문이고 원인을 ERROR 로그로 한 번 남긴다")
+    void mvcInternalErrorIsLogged(CapturedOutput output) throws Exception {
+      expectError(standalone.perform(get("/missing-variable")), 500, "INTERNAL_SERVER_ERROR")
+          .andExpect(jsonPath("$.message").value("서버 내부 오류가 발생했습니다."));
+
+      assertLoggedOnce(output, "MissingPathVariableException");
+    }
+
+    private void assertLoggedOnce(CapturedOutput output, String cause) {
+      String logged = output.getAll();
+      assertThat(logged.lines().filter(line -> line.contains(" ERROR ")).count())
+          .as("ERROR 로그는 요청당 한 번")
+          .isEqualTo(1);
+      assertThat(logged).as("원인 예외가 로그에 남는다").contains(cause);
+      assertThat(logged).as("스택 트레이스가 로그에 남는다").contains("\tat ");
+    }
+
+    @Test
     @DisplayName("예외를 던지는 컨트롤러는 통합 컨텍스트에 등록되지 않는다")
     void throwingControllerIsNotScanned() throws Exception {
       perform(get("/boom"), null, null).andExpect(status().isNotFound());
@@ -235,6 +270,12 @@ class ErrorResponseContractTest extends AbstractApiTest {
     @GetMapping("/boom")
     String boom() {
       throw new IllegalStateException(SECRET);
+    }
+
+    /** 경로에 없는 변수를 요구한다. Spring MVC 가 {@code MissingPathVariableException} 으로 500 을 판정한다. */
+    @GetMapping("/missing-variable")
+    String missingVariable(@PathVariable String id) {
+      return id;
     }
   }
 

@@ -43,7 +43,7 @@ DTO 를 직접 반환한다. `data` 같은 래퍼를 두지 않는다. 테스트
 | Spring MVC 가 500 으로 판정한 것 | 500 | `INTERNAL_SERVER_ERROR` | `서버 내부 오류가 발생했습니다.` |
 | 핸들러에 없는 예외 | 500 | `INTERNAL_SERVER_ERROR` | `서버 내부 오류가 발생했습니다.` |
 
-- **500 의 실제 예외와 스택 트레이스는 서버 로그에 ERROR 로 남는다.** 클라이언트에는 고정 문구만 간다
+- **5xx 로 응답한 예외는 원인과 스택 트레이스가 서버 로그에 ERROR 로 한 번 남는다.** 핸들러에 없는 예외뿐 아니라 Spring MVC 가 500 으로 판정한 예외(`MissingPathVariableException` 등)도 포함한다. 클라이언트에는 고정 문구만 간다
 - 업무 예외는 공통 부모 하나로 뭉뚱그리지 않고 구체 예외마다 매핑한다. 새 업무 예외를 추가하면 핸들러에도 명시해야 하며, 빠뜨리면 500 이 된다 — 그것이 "예상 밖" 의 정의다
 - 기술 예외(`OptimisticLockingFailureException` 등)는 본선 전략이 아니므로 개별 코드 없이 500 이다
 
@@ -51,6 +51,7 @@ DTO 를 직접 반환한다. `data` 같은 래퍼를 두지 않는다. 테스트
 
 - `ApiExceptionHandler` 는 `ResponseEntityExceptionHandler` 를 상속한다. Spring MVC 예외의 상태와 헤더는 부모가 판정한다
 - **단일 출구**: `ResponseEntity` 를 만드는 곳은 `createResponseEntity` 훅 하나뿐이다. 모든 `@ExceptionHandler` 와 override 는 `handleExceptionInternal` 을 거친다. 확인: `grep -n "ResponseEntity\." ApiExceptionHandler.java` 결과 없음
+- 5xx 로깅은 예외와 상태를 함께 받는 `handleExceptionInternal` override 한 곳에서 하고 부모로 위임한다. 부모는 Spring MVC 가 판정한 500 을 로그 없이 응답하므로 catch-all 에 두면 그 경로가 빠진다
 - 훅이 Content-Type 을 `application/json` 으로 **미리 지정**한다. 응답에 구체적인 Content-Type 이 있으면 Spring 은 `Accept` 협상을 건너뛴다 (`AbstractMessageConverterMethodProcessor.writeWithMessageConverters`)
 
 ### 2.2 범위
@@ -92,7 +93,7 @@ DispatcherServlet 이 처리하는 요청까지다. 필터 단계의 오류, 연
 
 원인: `@ExceptionHandler` 가 만든 `ResponseEntity<ErrorResponse>` 를 JSON 으로 쓸 수 없어 핸들러 안에서 `HttpMediaTypeNotAcceptableException` 이 나고, 그 핸들러의 결과가 버려졌다. Spring 이 아는 예외(타입 불일치 등)는 기본 resolver 가 받아 상태가 살았지만, 업무·인증 예외는 아무도 받지 않아 500 이 됐다.
 
-검증: `ErrorResponseContractTest` 를 옛 핸들러로 돌리면 24건 중 19건이 실패하고, `ErrorResponseServerTest` 는 404 대신 500 을 받는다.
+검증: `ErrorResponseContractTest` 를 옛 핸들러로 돌리면 26건 중 20건이 실패하고 (통과하는 6건은 이전에도 JSON 이던 기본 `Accept` 업무·입력 오류 5건과 테스트 컨트롤러 스캔 제외 확인 1건), `ErrorResponseServerTest` 는 404 대신 500 을 받는다.
 
 ## 5. 테스트
 
@@ -101,7 +102,7 @@ DispatcherServlet 이 처리하는 요청까지다. 필터 단계의 오류, 연
 | `FailureContractApiTest` | 업무 실패의 상태·code, 거절 후 부작용 없음 |
 | `ApiInputValidationTest` | 입력 길이·형식 400, 잔액 상한 409 |
 | `RoutingContractApiTest` | 3절 판정 순서와 `Allow` |
-| `ErrorResponseContractTest` | 2절 본문·Content-Type 을 기본 `Accept` 와 `text/plain` 모두에서. 500 은 standalone |
+| `ErrorResponseContractTest` | 2절 본문·Content-Type 을 기본 `Accept` 와 `text/plain` 모두에서. 500 은 standalone 으로 본문과 ERROR 로그 1건(catch-all, Spring MVC 판정 각각) |
 | `ErrorResponseServerTest` | 내장 서버에서 `Accept: text/plain` 404 + JSON |
 
 ## 6. 범위 밖
