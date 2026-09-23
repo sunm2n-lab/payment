@@ -3,9 +3,9 @@ package com.sunm2n.pay.api;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.sunm2n.pay.application.PaymentService;
-import com.sunm2n.pay.domain.Payment;
-import com.sunm2n.pay.domain.PaymentMethod;
+import com.sunm2n.pay.payment.application.PaymentService;
+import com.sunm2n.pay.payment.domain.Payment;
+import com.sunm2n.pay.payment.domain.PaymentMethod;
 import com.sunm2n.pay.support.AbstractApiTest;
 import com.sunm2n.pay.support.Seeds;
 import org.junit.jupiter.api.BeforeEach;

@@ -1,13 +1,13 @@
 package com.sunm2n.pay.bootstrap.config;
 
-import com.sunm2n.pay.application.CasPaymentConfirmer;
-import com.sunm2n.pay.application.NaivePaymentConfirmer;
-import com.sunm2n.pay.application.PaymentConfirmer;
-import com.sunm2n.pay.application.PaymentService;
-import com.sunm2n.pay.application.PaymentSupport;
-import com.sunm2n.pay.application.RetryMetrics;
-import com.sunm2n.pay.application.RetryingPaymentConfirmer;
-import com.sunm2n.pay.infrastructure.PaymentRepository;
+import com.sunm2n.pay.payment.application.PaymentService;
+import com.sunm2n.pay.payment.application.PaymentSupport;
+import com.sunm2n.pay.payment.application.confirmation.CasPaymentConfirmer;
+import com.sunm2n.pay.payment.application.confirmation.NaivePaymentConfirmer;
+import com.sunm2n.pay.payment.application.confirmation.PaymentConfirmer;
+import com.sunm2n.pay.payment.application.confirmation.RetryMetrics;
+import com.sunm2n.pay.payment.application.confirmation.RetryingPaymentConfirmer;
+import com.sunm2n.pay.payment.infrastructure.PaymentRepository;
 import com.sunm2n.pay.wallet.application.WalletService;
 import com.sunm2n.pay.wallet.application.balance.AtomicDecrementWalletBalanceUpdater;
 import com.sunm2n.pay.wallet.application.balance.GuardedDecrementWalletBalanceUpdater;

@@ -1,13 +1,13 @@
 package com.sunm2n.pay.wallet.application.balance;
 
-import com.sunm2n.pay.application.PaymentConfirmer;
 import com.sunm2n.pay.wallet.domain.Wallet;
 
 /**
  * 지갑 잔액 변경 전략.
  *
  * <p>S2 는 잔액을 바꾸는 방식이 다섯으로 갈라진다 (naive / 원자적 감산 / 조건부 감산 / 낙관적 락 / 비관적 락). 갈라지는 지점은 승인의 MONEY 분기와
- * 충전 둘뿐이고 나머지는 같아야 하므로, 그 둘만 이 이음매로 뽑아낸다. {@link PaymentConfirmer} 가 "상태 전이를 어떻게 확정하느냐" 하나로 갈렸던 것과
+ * 충전 둘뿐이고 나머지는 같아야 하므로, 그 둘만 이 이음매로 뽑아낸다. {@link
+ * com.sunm2n.pay.payment.application.confirmation.PaymentConfirmer} 가 "상태 전이를 어떻게 확정하느냐" 하나로 갈렸던 것과
  * 같은 방식이다.
  *
  * <p>전략은 <b>호출자가 넘긴다.</b> 구현 하나가 가변 상태로 전략을 바꾸는 방식은 쓰지 않는다. 조합은 {@link

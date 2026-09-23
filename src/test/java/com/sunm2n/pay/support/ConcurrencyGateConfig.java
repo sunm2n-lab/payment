@@ -1,6 +1,6 @@
 package com.sunm2n.pay.support;
 
-import com.sunm2n.pay.infrastructure.PaymentRepository;
+import com.sunm2n.pay.payment.infrastructure.PaymentRepository;
 import com.sunm2n.pay.wallet.infrastructure.VersionedWalletRepository;
 import com.sunm2n.pay.wallet.infrastructure.WalletRepository;
 import java.lang.reflect.InvocationHandler;

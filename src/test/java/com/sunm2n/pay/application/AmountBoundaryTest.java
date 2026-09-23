@@ -3,8 +3,9 @@ package com.sunm2n.pay.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.sunm2n.pay.domain.Payment;
-import com.sunm2n.pay.domain.PaymentMethod;
+import com.sunm2n.pay.payment.application.PaymentService;
+import com.sunm2n.pay.payment.domain.Payment;
+import com.sunm2n.pay.payment.domain.PaymentMethod;
 import com.sunm2n.pay.support.AbstractIntegrationTest;
 import com.sunm2n.pay.support.Seeds;
 import com.sunm2n.pay.wallet.application.WalletService;

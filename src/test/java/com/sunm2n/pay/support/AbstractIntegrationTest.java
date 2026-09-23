@@ -1,7 +1,7 @@
 package com.sunm2n.pay.support;
 
 import com.sunm2n.pay.bootstrap.seed.SeedRunner;
-import com.sunm2n.pay.infrastructure.FakeCardApprovalClient;
+import com.sunm2n.pay.payment.infrastructure.card.FakeCardApprovalClient;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;

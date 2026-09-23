@@ -3,8 +3,11 @@ package com.sunm2n.pay.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.sunm2n.pay.domain.Payment;
-import com.sunm2n.pay.domain.PaymentMethod;
+import com.sunm2n.pay.payment.application.confirmation.PaymentConfirmer;
+import com.sunm2n.pay.payment.application.confirmation.RetryMetrics;
+import com.sunm2n.pay.payment.application.confirmation.RetryingPaymentConfirmer;
+import com.sunm2n.pay.payment.domain.Payment;
+import com.sunm2n.pay.payment.domain.PaymentMethod;
 import com.sunm2n.pay.wallet.domain.exception.InsufficientBalanceException;
 import java.time.Duration;
 import java.util.ArrayList;

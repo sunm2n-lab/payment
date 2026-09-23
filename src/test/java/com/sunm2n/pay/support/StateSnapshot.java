@@ -1,6 +1,6 @@
 package com.sunm2n.pay.support;
 
-import com.sunm2n.pay.infrastructure.FakeCardApprovalClient;
+import com.sunm2n.pay.payment.infrastructure.card.FakeCardApprovalClient;
 import java.util.List;
 import java.util.Map;
 import org.springframework.jdbc.core.JdbcTemplate;

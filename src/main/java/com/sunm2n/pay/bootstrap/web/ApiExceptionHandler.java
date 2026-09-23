@@ -2,11 +2,11 @@ package com.sunm2n.pay.bootstrap.web;
 
 import com.sunm2n.pay.common.exception.DomainException;
 import com.sunm2n.pay.common.web.error.ErrorResponse;
-import com.sunm2n.pay.domain.exception.CancelAmountExceededException;
-import com.sunm2n.pay.domain.exception.InvalidPaymentStatusException;
-import com.sunm2n.pay.domain.exception.PaymentMismatchException;
-import com.sunm2n.pay.domain.exception.PaymentNotFoundException;
 import com.sunm2n.pay.merchant.api.auth.UnauthorizedMerchantException;
+import com.sunm2n.pay.payment.domain.exception.CancelAmountExceededException;
+import com.sunm2n.pay.payment.domain.exception.InvalidPaymentStatusException;
+import com.sunm2n.pay.payment.domain.exception.PaymentMismatchException;
+import com.sunm2n.pay.payment.domain.exception.PaymentNotFoundException;
 import com.sunm2n.pay.wallet.domain.exception.BalanceOverflowException;
 import com.sunm2n.pay.wallet.domain.exception.InsufficientBalanceException;
 import com.sunm2n.pay.wallet.domain.exception.WalletNotFoundException;
