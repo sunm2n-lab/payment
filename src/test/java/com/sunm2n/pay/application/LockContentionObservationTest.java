@@ -7,6 +7,7 @@ import com.sunm2n.pay.domain.PaymentMethod;
 import com.sunm2n.pay.support.AbstractIntegrationTest;
 import com.sunm2n.pay.support.ConcurrencyGate;
 import com.sunm2n.pay.support.ConcurrentRunner;
+import com.sunm2n.pay.wallet.application.WalletService;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;

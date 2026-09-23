@@ -5,12 +5,13 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.sunm2n.pay.domain.Payment;
 import com.sunm2n.pay.domain.PaymentMethod;
-import com.sunm2n.pay.domain.exception.InsufficientBalanceException;
 import com.sunm2n.pay.domain.exception.InvalidPaymentStatusException;
 import com.sunm2n.pay.support.AbstractIntegrationTest;
 import com.sunm2n.pay.support.ConcurrencyGate;
 import com.sunm2n.pay.support.ConcurrentRunner;
 import com.sunm2n.pay.support.Seeds;
+import com.sunm2n.pay.wallet.application.WalletService;
+import com.sunm2n.pay.wallet.domain.exception.InsufficientBalanceException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;

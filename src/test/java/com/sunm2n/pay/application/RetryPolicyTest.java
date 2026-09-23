@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.sunm2n.pay.domain.Payment;
 import com.sunm2n.pay.domain.PaymentMethod;
-import com.sunm2n.pay.domain.exception.InsufficientBalanceException;
+import com.sunm2n.pay.wallet.domain.exception.InsufficientBalanceException;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;

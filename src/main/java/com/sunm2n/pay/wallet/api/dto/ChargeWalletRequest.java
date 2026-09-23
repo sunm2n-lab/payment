@@ -1,4 +1,4 @@
-package com.sunm2n.pay.api.dto;
+package com.sunm2n.pay.wallet.api.dto;
 
 import jakarta.validation.constraints.Positive;
 

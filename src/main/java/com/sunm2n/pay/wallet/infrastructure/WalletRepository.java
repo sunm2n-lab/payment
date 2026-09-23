@@ -1,6 +1,6 @@
-package com.sunm2n.pay.infrastructure;
+package com.sunm2n.pay.wallet.infrastructure;
 
-import com.sunm2n.pay.domain.Wallet;
+import com.sunm2n.pay.wallet.domain.Wallet;
 import jakarta.persistence.LockModeType;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;

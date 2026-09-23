@@ -3,11 +3,12 @@ package com.sunm2n.pay.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.sunm2n.pay.domain.LedgerType;
-import com.sunm2n.pay.domain.Wallet;
-import com.sunm2n.pay.domain.exception.WalletNotFoundException;
 import com.sunm2n.pay.support.AbstractIntegrationTest;
 import com.sunm2n.pay.support.Seeds;
+import com.sunm2n.pay.wallet.application.WalletService;
+import com.sunm2n.pay.wallet.domain.LedgerType;
+import com.sunm2n.pay.wallet.domain.Wallet;
+import com.sunm2n.pay.wallet.domain.exception.WalletNotFoundException;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.DisplayName;

@@ -1,13 +1,13 @@
-package com.sunm2n.pay.application;
+package com.sunm2n.pay.wallet.application.balance;
 
-import com.sunm2n.pay.domain.Amounts;
-import com.sunm2n.pay.domain.LedgerType;
-import com.sunm2n.pay.domain.Wallet;
-import com.sunm2n.pay.domain.WalletLedger;
-import com.sunm2n.pay.domain.exception.InsufficientBalanceException;
-import com.sunm2n.pay.domain.exception.WalletNotFoundException;
-import com.sunm2n.pay.infrastructure.WalletLedgerRepository;
-import com.sunm2n.pay.infrastructure.WalletRepository;
+import com.sunm2n.pay.wallet.domain.Amounts;
+import com.sunm2n.pay.wallet.domain.LedgerType;
+import com.sunm2n.pay.wallet.domain.Wallet;
+import com.sunm2n.pay.wallet.domain.WalletLedger;
+import com.sunm2n.pay.wallet.domain.exception.InsufficientBalanceException;
+import com.sunm2n.pay.wallet.domain.exception.WalletNotFoundException;
+import com.sunm2n.pay.wallet.infrastructure.WalletLedgerRepository;
+import com.sunm2n.pay.wallet.infrastructure.WalletRepository;
 
 /**
  * S2-b 비관적 락 — <b>본선</b> (SCENARIO 144~145행).

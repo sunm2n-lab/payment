@@ -1,6 +1,6 @@
-package com.sunm2n.pay.infrastructure;
+package com.sunm2n.pay.wallet.infrastructure;
 
-import com.sunm2n.pay.domain.WalletLedger;
+import com.sunm2n.pay.wallet.domain.WalletLedger;
 import java.util.List;
 import org.springframework.data.jpa.repository.JpaRepository;
 

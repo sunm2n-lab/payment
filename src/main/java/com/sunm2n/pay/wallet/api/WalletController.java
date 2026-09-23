@@ -1,8 +1,8 @@
-package com.sunm2n.pay.api;
+package com.sunm2n.pay.wallet.api;
 
-import com.sunm2n.pay.api.dto.ChargeWalletRequest;
-import com.sunm2n.pay.api.dto.WalletResponse;
-import com.sunm2n.pay.application.WalletService;
+import com.sunm2n.pay.wallet.api.dto.ChargeWalletRequest;
+import com.sunm2n.pay.wallet.api.dto.WalletResponse;
+import com.sunm2n.pay.wallet.application.WalletService;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;

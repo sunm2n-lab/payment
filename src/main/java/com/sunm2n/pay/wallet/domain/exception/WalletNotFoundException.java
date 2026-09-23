@@ -1,4 +1,4 @@
-package com.sunm2n.pay.domain.exception;
+package com.sunm2n.pay.wallet.domain.exception;
 
 import com.sunm2n.pay.common.exception.DomainException;
 

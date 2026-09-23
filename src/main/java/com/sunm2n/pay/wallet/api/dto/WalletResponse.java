@@ -1,6 +1,6 @@
-package com.sunm2n.pay.api.dto;
+package com.sunm2n.pay.wallet.api.dto;
 
-import com.sunm2n.pay.domain.Wallet;
+import com.sunm2n.pay.wallet.domain.Wallet;
 
 public record WalletResponse(Long memberId, long balance) {
 

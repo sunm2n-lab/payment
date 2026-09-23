@@ -1,6 +1,7 @@
-package com.sunm2n.pay.application;
+package com.sunm2n.pay.wallet.application.balance;
 
-import com.sunm2n.pay.domain.Wallet;
+import com.sunm2n.pay.application.PaymentConfirmer;
+import com.sunm2n.pay.wallet.domain.Wallet;
 
 /**
  * 지갑 잔액 변경 전략.
@@ -21,7 +22,7 @@ public interface WalletBalanceUpdater {
    *
    * <p>지갑을 {@code walletId} 로 받는다. 결제 생성 시점에 확정된 {@code payment.wallet_id} 다.
    *
-   * @throws com.sunm2n.pay.domain.exception.InsufficientBalanceException 잔액이 부족할 때
+   * @throws com.sunm2n.pay.wallet.domain.exception.InsufficientBalanceException 잔액이 부족할 때
    */
   void debit(Long walletId, Long paymentId, long amount);
 

@@ -1,11 +1,11 @@
-package com.sunm2n.pay.application;
+package com.sunm2n.pay.wallet.application.balance;
 
-import com.sunm2n.pay.domain.LedgerType;
-import com.sunm2n.pay.domain.Wallet;
-import com.sunm2n.pay.domain.WalletLedger;
-import com.sunm2n.pay.domain.exception.InsufficientBalanceException;
-import com.sunm2n.pay.infrastructure.WalletLedgerRepository;
-import com.sunm2n.pay.infrastructure.WalletRepository;
+import com.sunm2n.pay.wallet.domain.LedgerType;
+import com.sunm2n.pay.wallet.domain.Wallet;
+import com.sunm2n.pay.wallet.domain.WalletLedger;
+import com.sunm2n.pay.wallet.domain.exception.InsufficientBalanceException;
+import com.sunm2n.pay.wallet.infrastructure.WalletLedgerRepository;
+import com.sunm2n.pay.wallet.infrastructure.WalletRepository;
 
 /**
  * S2 비교 실험 2 — 검사와 감산을 한 문장으로 원자화한다 (SCENARIO 140행).

@@ -3,6 +3,7 @@ package com.sunm2n.pay.application;
 import com.sunm2n.pay.domain.Payment;
 import com.sunm2n.pay.domain.exception.InvalidPaymentStatusException;
 import com.sunm2n.pay.infrastructure.PaymentRepository;
+import com.sunm2n.pay.wallet.application.balance.WalletBalanceUpdater;
 import org.springframework.transaction.annotation.Transactional;
 
 /**

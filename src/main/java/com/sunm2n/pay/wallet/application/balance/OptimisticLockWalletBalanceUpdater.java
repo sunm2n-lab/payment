@@ -1,12 +1,12 @@
-package com.sunm2n.pay.application;
+package com.sunm2n.pay.wallet.application.balance;
 
-import com.sunm2n.pay.domain.LedgerType;
-import com.sunm2n.pay.domain.VersionedWallet;
-import com.sunm2n.pay.domain.Wallet;
-import com.sunm2n.pay.domain.WalletLedger;
-import com.sunm2n.pay.domain.exception.InsufficientBalanceException;
-import com.sunm2n.pay.infrastructure.VersionedWalletRepository;
-import com.sunm2n.pay.infrastructure.WalletLedgerRepository;
+import com.sunm2n.pay.wallet.domain.LedgerType;
+import com.sunm2n.pay.wallet.domain.VersionedWallet;
+import com.sunm2n.pay.wallet.domain.Wallet;
+import com.sunm2n.pay.wallet.domain.WalletLedger;
+import com.sunm2n.pay.wallet.domain.exception.InsufficientBalanceException;
+import com.sunm2n.pay.wallet.infrastructure.VersionedWalletRepository;
+import com.sunm2n.pay.wallet.infrastructure.WalletLedgerRepository;
 
 /**
  * S2-a 낙관적 락 (SCENARIO 142행).

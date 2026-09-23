@@ -9,6 +9,7 @@ import com.sunm2n.pay.support.AbstractIntegrationTest;
 import com.sunm2n.pay.support.ConcurrencyGate;
 import com.sunm2n.pay.support.ConcurrentRunner;
 import com.sunm2n.pay.support.Seeds;
+import com.sunm2n.pay.wallet.application.WalletService;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;

@@ -9,6 +9,7 @@ import com.sunm2n.pay.support.AbstractIntegrationTest;
 import com.sunm2n.pay.support.ConcurrencyGate;
 import com.sunm2n.pay.support.ConcurrentRunner;
 import com.sunm2n.pay.support.Seeds;
+import com.sunm2n.pay.wallet.application.WalletService;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Queue;

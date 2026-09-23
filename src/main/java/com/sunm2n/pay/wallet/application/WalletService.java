@@ -1,8 +1,9 @@
-package com.sunm2n.pay.application;
+package com.sunm2n.pay.wallet.application;
 
-import com.sunm2n.pay.domain.Wallet;
-import com.sunm2n.pay.domain.exception.WalletNotFoundException;
-import com.sunm2n.pay.infrastructure.WalletRepository;
+import com.sunm2n.pay.wallet.application.balance.WalletBalanceUpdater;
+import com.sunm2n.pay.wallet.domain.Wallet;
+import com.sunm2n.pay.wallet.domain.exception.WalletNotFoundException;
+import com.sunm2n.pay.wallet.infrastructure.WalletRepository;
 import org.springframework.transaction.annotation.Transactional;
 
 /**

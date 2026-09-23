@@ -1,6 +1,6 @@
-package com.sunm2n.pay.domain;
+package com.sunm2n.pay.wallet.domain;
 
-import com.sunm2n.pay.domain.exception.BalanceOverflowException;
+import com.sunm2n.pay.wallet.domain.exception.BalanceOverflowException;
 
 /**
  * 금액 산술.

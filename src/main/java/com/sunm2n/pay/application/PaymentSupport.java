@@ -3,14 +3,15 @@ package com.sunm2n.pay.application;
 import com.sunm2n.pay.domain.Payment;
 import com.sunm2n.pay.domain.PaymentMethod;
 import com.sunm2n.pay.domain.PaymentStatus;
-import com.sunm2n.pay.domain.Wallet;
 import com.sunm2n.pay.domain.exception.InvalidPaymentStatusException;
 import com.sunm2n.pay.domain.exception.PaymentMismatchException;
 import com.sunm2n.pay.domain.exception.PaymentNotFoundException;
 import com.sunm2n.pay.infrastructure.CardApproval;
 import com.sunm2n.pay.infrastructure.CardApprovalClient;
 import com.sunm2n.pay.infrastructure.PaymentRepository;
-import com.sunm2n.pay.infrastructure.WalletRepository;
+import com.sunm2n.pay.wallet.application.balance.WalletBalanceUpdater;
+import com.sunm2n.pay.wallet.domain.Wallet;
+import com.sunm2n.pay.wallet.infrastructure.WalletRepository;
 import java.time.LocalDateTime;
 import org.springframework.stereotype.Component;
 
