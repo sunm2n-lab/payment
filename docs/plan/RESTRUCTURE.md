@@ -12,7 +12,7 @@
 | 바꾸지 않는 것 | 트랜잭션·락·재시도·빈 이름·`@Primary`·`@Qualifier`·스키마·테스트 동기화 지점·오류 판정 순서·기존 오류 코드와 HTTP 상태 |
 | PR | 3개, 순서대로. ① 기준선 테스트 ② 구조 이동 ③ 오류 응답 |
 | 완료 기준 | `spotlessCheck` + 전체 테스트 green, S1·S2 재현 테스트가 계속 결함을 재현, 회귀 테스트 통과, 새 계약 테스트 통과 |
-| **미결** | 루트 패키지 이름 (3.1). **PR ② 착수 전에 저장소 소유자가 확정한다.** PR ① 은 미결과 무관하게 시작할 수 있다 |
+| 루트 패키지 | **`com.sunm2n.pay`** — #21 에서 확정했다. 이 문서에 남은 "미결" 표기보다 이슈의 결정이 우선한다 (5.1) |
 
 ## 1. 배경
 
@@ -51,7 +51,7 @@ S1·S2 를 거치며 `application` 패키지에 결제 승인 구현 3개, 잔�
 
 ## 2. 목표 구조
 
-`<root>` 는 3.1 에서 확정하는 루트 패키지다.
+`<root>` 는 루트 패키지이며 #21 에서 `com.sunm2n.pay` 로 확정했다 (5.1).
 
 ```
 <root>
@@ -212,7 +212,9 @@ wallet   ──> payment 를 import 하지 않는다  (지금 0건, 유지)
 
 **목적**: 2절의 구조로 옮긴다. 업무 동작을 바꾸지 않는다. package 선언과 import 만 바뀌므로 "순수 rename" 은 아니지만 유사도 기반 rename 감지는 동작한다. 리뷰는 `git diff -M --stat` 으로 전부 rename 인지 먼저 보고, `git diff -M` 으로 package/import 줄 외의 변경이 없는지 본다.
 
-### 5.1 루트 패키지 (미결)
+### 5.1 루트 패키지 (확정: `com.sunm2n.pay`)
+
+> **정정 (PR ①)**: #21 에서 `com.sunm2n.pay` 로 확정했다. 아래 후보 표는 검토 기록으로 남기며, "확정할 때까지 시작하지 않는다" 는 조건은 충족됐다.
 
 지금 그대로 가면 `com.sunm2n.payment.payment.domain.Payment` 처럼 말이 더듬어진다. 모든 파일이 이동하는 지금이 루트를 바꿀 최저 비용 시점이다.
 
@@ -231,7 +233,7 @@ wallet   ──> payment 를 import 하지 않는다  (지금 0건, 유지)
 
 ### 5.2 이동 방법
 
-- 이동은 `git mv` 로 한다. 새 파일 생성 + 삭제로 하면 rename 감지와 `git log --follow` 가 끊긴다
+- 이동은 `git mv` 로 한다. 다만 Git 은 rename 을 기록하지 않고 **내용 유사도로 판정**하므로, `git mv` 여부가 rename 감지를 결정하지는 않는다. 감지와 `git log --follow` 를 지키는 것은 이동 커밋에서 package/import 외의 내용을 바꾸지 않는 것이다
 - 각 파일의 `package` 선언과 모든 import 를 새 경로로 바꾼다. Javadoc 의 `{@link ...}` 가 다른 패키지를 가리키게 되면 import 를 추가하거나 FQN 으로 쓴다. `spotlessApply` 가 import 순서를 정리한다
 - main 에 package-private 클래스나 생성자가 없다 (확인 완료). 접근 범위 때문에 깨질 곳은 없다
 - 빈 이름은 바뀌지 않는다. `ConcurrencyStrategyConfig` 의 `@Bean` 메서드 이름과 `@Qualifier` 문자열을 그대로 둔다
@@ -239,7 +241,8 @@ wallet   ──> payment 를 import 하지 않는다  (지금 0건, 유지)
 
 ### 5.3 커밋 (커밋마다 컴파일·`spotlessCheck`·전체 테스트 green)
 
-1. `refactor` — (루트를 바꾸는 경우) `PaymentApplication` 과 테스트 전체를 새 루트로. 하위 패키지 구조는 아직 그대로
+1. `refactor` — main 과 test **전체**의 루트 접두사를 `com.sunm2n.payment` → `com.sunm2n.pay` 로 함께 바꾼다. 하위 패키지 구조는 아직 그대로
+   - **정정 (PR ①)**: `PaymentApplication` 과 테스트만 먼저 옮기면 기존 루트에 남은 서비스·리포지터리·엔티티가 `@SpringBootApplication` 의 기본 스캔(컴포넌트·JPA 엔티티·리포지터리) 밖으로 빠져 이 커밋이 green 일 수 없다
 2. `refactor` — `common` (`DomainException`, `ErrorResponse`) 과 `bootstrap` (`ConcurrencyStrategyConfig`, `WebConfig`, `SeedRunner`, `ApiExceptionHandler`)
 3. `refactor` — `merchant` 와 `settlement`
 4. `refactor` — `wallet` (`Amounts` 포함)
@@ -315,11 +318,11 @@ protected ResponseEntity<Object> createResponseEntity(
 
 ### 6.3 커밋
 
-1. `refactor` — `ResponseEntityExceptionHandler` 상속 + override 2개 + 단일 출구 규칙 적용. **응답 변화 없음** (기존 테스트 green)
-2. `feat` — `createResponseEntity` 훅으로 4.2 의 본문과 Content-Type 고정. MVC 오류에 본문이 생기고 `Accept` 결함이 사라진다
-3. `feat` — 500 catch-all 과 로그
-4. `test` — `ErrorResponseContractTest` (통합 + standalone 500)
-5. `docs` — `docs/API_CONTRACT.md` 신설: 4.1·4.2·4.3 의 목표 상태, 3절의 판정 순서 실측표(적용 조건 명시), 변경 전 기록(4.3 현재 표), 범위 밖
+1. `feat` — `ResponseEntityExceptionHandler` 상속 + override 2개 + 단일 출구 규칙 + `createResponseEntity` 훅으로 4.2 의 본문과 Content-Type 고정. MVC 오류에 본문이 생기고 `Accept` 결함이 사라진다
+   - **정정 (PR ①)**: 상속만 하는 커밋은 "응답 변화 없음" 이 아니다. 부모의 `handleExceptionInternal` 은 본문이 없고 예외가 `org.springframework.web.ErrorResponse` 이면 `ProblemDetail` 을 본문으로 채우므로, 지금 빈 본문인 404·405·415 에 `application/problem+json` 본문이 생긴다. 기존 테스트는 이 본문을 단언하지 않으므로 green 이 응답 보존을 증명하지 않는다. 그래서 상속과 최종 본문 변환을 한 커밋으로 묶는다
+2. `feat` — 500 catch-all 과 로그
+3. `test` — `ErrorResponseContractTest` (통합 + standalone 500)
+4. `docs` — `docs/API_CONTRACT.md` 신설: 4.1·4.2·4.3 의 목표 상태, 3절의 판정 순서 실측표(적용 조건 명시), 변경 전 기록(4.3 현재 표), 범위 밖
 
 ## 7. 범위 밖 (예정된 단계에서 한다)
 
@@ -338,7 +341,7 @@ protected ResponseEntity<Object> createResponseEntity(
 ./gradlew spotlessCheck test
 ```
 
-- PR ①: 기준선 테스트 10건 green. 기존 99건 그대로
+- PR ①: 기준선 테스트 10건 green. 기존 99건 그대로 (**정정 (PR ①)**: 실제 기존 테스트는 96건이다. main 의 `@Test` 96개, 기준선 추가 후 106건)
 - PR ②: 커밋마다 위 명령 green. `git diff -M --stat main...HEAD` 에서 main 코드의 변경이 전부 rename 이어야 한다 (docs 제외)
 - PR ③: 기존 테스트 수정 없이 green + `ErrorResponseContractTest` green. `DuplicateConfirmReproductionTest` 와 `WalletLostUpdateReproductionTest` 가 **여전히 결함을 재현**하는지 실행 로그로 확인한다. 회귀 테스트 `DuplicateConfirmRegressionTest`, `WalletLockRegressionTest` 통과
 
