@@ -10,6 +10,8 @@ import com.sunm2n.pay.payment.domain.exception.PaymentNotFoundException;
 import com.sunm2n.pay.wallet.domain.exception.BalanceOverflowException;
 import com.sunm2n.pay.wallet.domain.exception.InsufficientBalanceException;
 import com.sunm2n.pay.wallet.domain.exception.WalletNotFoundException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
@@ -45,6 +47,8 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExcep
  */
 @RestControllerAdvice
 public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
+
+  private static final Logger log = LoggerFactory.getLogger(ApiExceptionHandler.class);
 
   private static final String INVALID_REQUEST_MESSAGE = "요청 값이 올바르지 않습니다.";
   private static final String INTERNAL_ERROR_MESSAGE = "서버 내부 오류가 발생했습니다.";
@@ -100,6 +104,22 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
       MethodArgumentTypeMismatchException e, WebRequest request) {
     return error(
         e, HttpStatus.BAD_REQUEST, "INVALID_REQUEST", e.getName() + ": 값의 형식이 올바르지 않습니다.", request);
+  }
+
+  /**
+   * 어느 핸들러에도 없는 예외 - "예상 밖" 의 정의다.
+   *
+   * <p>원인과 스택은 서버 로그에만 남기고 클라이언트에는 고정 문구만 보낸다. 부모의 Spring MVC 예외 핸들러들보다 덜 구체적이므로 그쪽 판정을 가로채지 않는다.
+   */
+  @ExceptionHandler(Exception.class)
+  public ResponseEntity<Object> handleUnexpected(Exception e, WebRequest request) {
+    log.error("처리되지 않은 예외", e);
+    return error(
+        e,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+        "INTERNAL_SERVER_ERROR",
+        INTERNAL_ERROR_MESSAGE,
+        request);
   }
 
   /**
