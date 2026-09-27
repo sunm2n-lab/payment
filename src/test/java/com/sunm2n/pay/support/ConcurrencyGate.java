@@ -45,6 +45,14 @@ public class ConcurrencyGate {
    */
   public static final String WALLET_LOCK_ATTEMPT = "wallet-lock-attempt";
 
+  /**
+   * {@code PaymentRepository.findByIdForUpdate} <b>호출 직전</b> — 아직 아무도 payment 락을 잡지 않은 시점 (S3).
+   *
+   * <p>비관적 락 취소는 그 앞에서 스칼라 소유 조회만 하므로, 이 시점에 참가자가 보유한 락은 없다. {@link #WALLET_LOCK_ATTEMPT} 와 같이 동시
+   * 출발만 보장하고 DB 락 대기가 일어났다는 증거는 아니다.
+   */
+  public static final String PAYMENT_LOCK_ATTEMPT = "payment-lock-attempt";
+
   private static final Duration TIMEOUT = Duration.ofSeconds(10);
 
   private final Map<String, Point> gates = new ConcurrentHashMap<>();

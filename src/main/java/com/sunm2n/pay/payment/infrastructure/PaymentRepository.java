@@ -1,8 +1,10 @@
 package com.sunm2n.pay.payment.infrastructure;
 
 import com.sunm2n.pay.payment.domain.Payment;
+import jakarta.persistence.LockModeType;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -14,6 +16,33 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
    * merchant_id}/{@code order_id} 인덱스 부재 실험에는 영향이 없다.
    */
   Optional<Payment> findByPaymentKey(String paymentKey);
+
+  /**
+   * 잠그지 않고 id 와 소유 가맹점만 찾는다. S3 의 비관적 락 취소가 {@link #findByIdForUpdate} <b>앞에</b> 쓰는 조회다.
+   *
+   * <p>두 값 모두 생성 후 바뀌지 않으므로 잠그기 전에 읽고 검사해도 안전하다. 엔티티를 로드하지 않는 것이 요점이다 — 이유는 {@link
+   * #findByIdForUpdate} 에 있다. 결제 상태를 읽는 시점이 아니므로 동기화 지점도 아니다.
+   */
+  @Query(
+      "SELECT new com.sunm2n.pay.payment.infrastructure.PaymentOwnership(p.id, p.merchantId)"
+          + " FROM Payment p WHERE p.paymentKey = :paymentKey")
+  Optional<PaymentOwnership> findOwnershipByPaymentKey(@Param("paymentKey") String paymentKey);
+
+  /**
+   * S3 비관적 락 — 결제 행을 잠그며 읽는다.
+   *
+   * <pre>SELECT ... FROM payment WHERE id = ? FOR UPDATE</pre>
+   *
+   * <p>이 조회 <b>앞에</b> 같은 결제를 엔티티로 읽어 두면 안 된다. 영속성 컨텍스트에 이미 있는 엔티티는 이 조회의 결과로 상태가 갱신되지 않으므로, 락은 잡았는데
+   * 값은 잠그기 전의 것이 된다 ({@code WalletRepository#findByIdForUpdate} 와 같은 함정).
+   *
+   * <p>{@code payment_key} 가 아니라 PK 로 잠근다. 없는 키를 {@code payment_key} 로 잠그면 REPEATABLE READ 에서
+   * unique 인덱스의 그 키가 들어갈 갭에 갭 락이 걸려, 트랜잭션이 끝날 때까지 그 갭에 들어오는 결제 INSERT 가 막힌다. 존재를 {@link
+   * #findOwnershipByPaymentKey} 로 확인한 뒤 PK 등치로 잠그면 레코드 락 하나로 끝난다. 결제를 물리 삭제하는 경로가 없다는 것이 전제다.
+   */
+  @Lock(LockModeType.PESSIMISTIC_WRITE)
+  @Query("SELECT p FROM Payment p WHERE p.id = :id")
+  Optional<Payment> findByIdForUpdate(@Param("id") Long id);
 
   /**
    * S1 의 조건부 UPDATE — READY 인 결제만 IN_PROGRESS 로 바꾸고 갱신 건수를 돌려준다. 1 을 받은 요청만 승인을 진행한다.

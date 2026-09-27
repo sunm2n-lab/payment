@@ -49,7 +49,8 @@ public class ConcurrencyGateConfig {
               bean,
               PaymentRepository.class,
               gate::getObject,
-              Map.of(),
+              // 잠그며 읽는 조회는 호출 직전에만 건다. findOwnershipByPaymentKey 는 상태를 읽지 않으므로 지점이 아니다.
+              Map.of("findByIdForUpdate", ConcurrencyGate.PAYMENT_LOCK_ATTEMPT),
               Map.of("findByPaymentKey", ConcurrencyGate.PAYMENT_READ));
         }
         if (bean instanceof VersionedWalletRepository) {

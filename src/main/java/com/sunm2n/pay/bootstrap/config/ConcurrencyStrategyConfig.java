@@ -4,6 +4,7 @@ import com.sunm2n.pay.payment.application.PaymentService;
 import com.sunm2n.pay.payment.application.PaymentSupport;
 import com.sunm2n.pay.payment.application.cancellation.NaivePaymentCanceller;
 import com.sunm2n.pay.payment.application.cancellation.PaymentCanceller;
+import com.sunm2n.pay.payment.application.cancellation.PessimisticLockPaymentCanceller;
 import com.sunm2n.pay.payment.application.confirmation.CasPaymentConfirmer;
 import com.sunm2n.pay.payment.application.confirmation.NaivePaymentConfirmer;
 import com.sunm2n.pay.payment.application.confirmation.PaymentConfirmer;
@@ -183,16 +184,30 @@ public class ConcurrencyStrategyConfig {
   }
 
   /**
-   * 취소 — naive 결제 읽기 + naive 환불. S3 재현용이며 <b>지금은 본선이기도 하다.</b>
+   * S3 재현용 — naive 결제 읽기 + naive 환불. 본선이 바뀌어도 이 빈은 Phase 0 의 취소 경로를 유지한다.
    *
    * <p>환불 전략은 차감·충전과 같은 {@code WalletBalanceUpdater} 에서 고른다. 같은 지갑 행을 바꾸는 경로들이 서로 다른 잠금 규칙을 쓰면 잠근
-   * 쪽의 효과가 사라지므로, 취소 조합도 이 표에서 승인과 나란히 읽혀야 한다.
+   * 쪽의 효과가 사라지므로(S3 재현 2), 취소 조합도 이 표에서 승인과 나란히 읽혀야 한다.
    */
   @Bean
-  @Primary
   PaymentCanceller naivePaymentCanceller(
       PaymentSupport support, NaiveWalletBalanceUpdater naiveUpdater) {
     return new NaivePaymentCanceller(support, naiveUpdater);
+  }
+
+  /**
+   * 본선 취소 — 결제 {@code FOR UPDATE} + 비관적 락 환불. {@link PaymentService} 가 이 빈에 위임한다.
+   *
+   * <p>승인 본선과 같은 {@link PessimisticLockWalletBalanceUpdater} 를 쓴다. 그래서 차감·충전·환불 세 경로가 같은 지갑 행을 같은
+   * 규칙으로 잠근다.
+   */
+  @Bean
+  @Primary
+  PaymentCanceller pessimisticPaymentCanceller(
+      PaymentSupport support,
+      PaymentRepository paymentRepository,
+      PessimisticLockWalletBalanceUpdater pessimisticUpdater) {
+    return new PessimisticLockPaymentCanceller(support, paymentRepository, pessimisticUpdater);
   }
 
   /** 충전 경쟁 재현용. 본선이 바뀌어도 이 빈은 Phase 0 의 충전 경로를 유지한다. */

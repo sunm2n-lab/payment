@@ -9,6 +9,7 @@ import com.sunm2n.pay.payment.domain.exception.InvalidPaymentStatusException;
 import com.sunm2n.pay.payment.domain.exception.PaymentMismatchException;
 import com.sunm2n.pay.payment.domain.exception.PaymentNotFoundException;
 import com.sunm2n.pay.payment.infrastructure.PaymentCancelRepository;
+import com.sunm2n.pay.payment.infrastructure.PaymentOwnership;
 import com.sunm2n.pay.payment.infrastructure.PaymentRepository;
 import com.sunm2n.pay.payment.infrastructure.card.CardApproval;
 import com.sunm2n.pay.payment.infrastructure.card.CardApprovalClient;
@@ -58,6 +59,24 @@ public class PaymentSupport {
       throw new PaymentNotFoundException(paymentKey);
     }
     return payment;
+  }
+
+  /**
+   * 소유 결제의 id 만 찾는다. 엔티티를 로드하지 않는다.
+   *
+   * <p>{@link #findOwnedPayment} 와 응답 규칙이 같다 — 없는 결제와 다른 가맹점의 결제는 모두 "없음" 이다. 비관적 락 취소가 {@code FOR
+   * UPDATE} 앞에서 쓰며, 존재와 소유 가맹점은 바뀌지 않는 값이라 잠그기 전에 검사해도 안전하다. 다른 가맹점의 요청이 남의 결제 행을 잠그지도 않는다.
+   */
+  public Long findOwnedPaymentId(Long merchantId, String paymentKey) {
+    PaymentOwnership ownership =
+        paymentRepository
+            .findOwnershipByPaymentKey(paymentKey)
+            .orElseThrow(() -> new PaymentNotFoundException(paymentKey));
+
+    if (!ownership.merchantId().equals(merchantId)) {
+      throw new PaymentNotFoundException(paymentKey);
+    }
+    return ownership.id();
   }
 
   /**
