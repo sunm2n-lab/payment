@@ -46,7 +46,9 @@ public interface WalletBalanceUpdater {
    *
    * <p>S3 에서 결제 쪽에 있던 환불 코드를 이리로 옮겼다. 차감·충전과 <b>같은 전략</b>으로 묶는 것이 요점이다. 같은 {@code wallet} 행을 바꾸는 경로
    * 하나라도 잠금 없이 읽고 쓰면, 다른 경로가 {@code FOR UPDATE} 로 잠가 둔 효과가 사라진다 — 잠금 없이 읽은 쪽이 나중에 옛 값으로 계산한 절대값을
-   * 덮어쓴다. 환불 전략을 따로 고를 수 있게 두면 "차감은 비관적, 환불은 naive" 같은 틀린 조합이 가능해진다.
+   * 덮어쓴다. 한 이음매로 묶는다고 혼용이 금지되지는 않는다 — 승인과 취소는 각자 updater 를 주입받는다 (S3 재현 2 가 일부러 섞는다). 혼용을 막는 것은 본선
+   * 배선이 승인·충전·취소에 같은 전략을 쓰는 것이고, 그 배선은 {@link
+   * com.sunm2n.pay.bootstrap.config.ConcurrencyStrategyConfig} 한곳에서 읽힌다.
    *
    * <p>{@link #credit} 과 합치지 않는다. 지갑을 찾는 키(walletId / memberId), 원장 타입(REFUND / CHARGE), {@code
    * paymentId} 유무가 모두 다르다. {@code paymentId} 는 {@code Long} 이라 {@code wallet -> payment} import 가
