@@ -6,6 +6,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Duration;
 import java.util.Map;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -125,6 +127,63 @@ class ConcurrencySupportTest {
     gate.reset();
 
     assertThatCode(() -> gate.pass(ConcurrencyGate.PAYMENT_READ)).doesNotThrowAnyException();
+  }
+
+  @Test
+  @DisplayName("hold 는 먼저 온 스레드를 붙잡아 상대의 작업이 끝난 뒤에 진행시킨다")
+  void holdForcesOrderBetweenTwoThreads() {
+    ConcurrencyGate gate = new ConcurrencyGate();
+    gate.armHold(ConcurrencyGate.WALLET_READ);
+    AtomicInteger turn = new AtomicInteger();
+    Queue<String> events = new ConcurrentLinkedQueue<>();
+
+    ConcurrentRunner.Results<String> results =
+        ConcurrentRunner.run(
+            2,
+            () -> {
+              if (turn.getAndIncrement() == 0) {
+                events.add("A 읽음");
+                gate.pass(ConcurrencyGate.WALLET_READ);
+                events.add("A 씀");
+              } else {
+                gate.awaitArrival(ConcurrencyGate.WALLET_READ);
+                // 이미 한 스레드를 붙잡았으므로 같은 지점을 지나는 다른 스레드는 멈추지 않는다
+                gate.pass(ConcurrencyGate.WALLET_READ);
+                events.add("B 커밋");
+                gate.release(ConcurrencyGate.WALLET_READ);
+              }
+              return "done";
+            });
+
+    assertThat(results.failures()).isEmpty();
+    assertThat(events).containsExactly("A 읽음", "B 커밋", "A 씀");
+  }
+
+  @Test
+  @DisplayName("hold 로 무장하지 않은 지점을 기다리거나 풀면 실패한다")
+  void holdApiRequiresHoldArming() {
+    ConcurrencyGate gate = new ConcurrencyGate();
+    gate.arm(ConcurrencyGate.PAYMENT_READ, WORKERS);
+
+    assertThatThrownBy(() -> gate.awaitArrival(ConcurrencyGate.PAYMENT_READ))
+        .isInstanceOf(IllegalStateException.class);
+    assertThatThrownBy(() -> gate.release(ConcurrencyGate.WALLET_READ))
+        .isInstanceOf(IllegalStateException.class);
+  }
+
+  @Test
+  @DisplayName("해제 규약은 hold 에 붙잡힌 스레드도 풀어 준다")
+  void resetReleasesHeldThread() throws Exception {
+    ConcurrencyGate gate = new ConcurrencyGate();
+    gate.armHold(ConcurrencyGate.WALLET_READ);
+    Thread held = new Thread(() -> gate.pass(ConcurrencyGate.WALLET_READ));
+    held.start();
+    gate.awaitArrival(ConcurrencyGate.WALLET_READ);
+
+    gate.reset();
+
+    held.join(WORKER_STOP_GRACE.toMillis());
+    assertThat(held.isAlive()).isFalse();
   }
 
   @Test

@@ -5,9 +5,11 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.BrokenBarrierException;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * 동시성 테스트의 동기화 지점.
@@ -19,6 +21,9 @@ import java.util.concurrent.TimeoutException;
  * 성공 후 영속성 컨텍스트가 비워진 엔티티를 재조회하는데, 그때 두 번째로 barrier 에 걸리면 나머지 참가자가 영영 오지 않아 테스트가 멈춘다.
  *
  * <p>대기에는 상한을 둔다. 기대와 달리 참가자가 모이지 않는 경우 테스트가 멈추는 대신 실패해야 한다.
+ *
+ * <p>지점은 두 종류로 무장할 수 있다. {@link #arm} 의 barrier 는 "동시에 출발" 만 보장한다. "A 가 읽음 → B 가 커밋 → A 가 씀" 처럼
+ * <b>순서</b>가 필요하면 {@link #armHold} 의 hold 를 쓴다 (S3 재현 2).
  */
 public class ConcurrencyGate {
 
@@ -42,16 +47,43 @@ public class ConcurrencyGate {
 
   private static final Duration TIMEOUT = Duration.ofSeconds(10);
 
-  private final Map<String, Gate> gates = new ConcurrentHashMap<>();
+  private final Map<String, Point> gates = new ConcurrentHashMap<>();
 
   /** 게이트를 무장한다. {@code parties} 개의 스레드가 모여야 통과한다. */
   public void arm(String name, int parties) {
     gates.put(name, new Gate(name, parties));
   }
 
+  /**
+   * 지점을 hold 로 무장한다. <b>처음 도착한 스레드 하나만</b> 붙잡고 {@link #release} 까지 멈춰 둔다. 나머지 스레드는 그냥 지나간다.
+   *
+   * <p>상대 스레드는 {@link #awaitArrival} 로 붙잡힌 것을 확인한 뒤 자기 작업을 끝내고 {@link #release} 한다. 그래서 붙잡힌 쪽이 그
+   * 지점까지 보유한 DB 락이 상대의 경로와 <b>겹치면 안 된다.</b> 겹치면 상대가 락에 막혀 release 에 도달하지 못하고 상한에 걸려 실패한다.
+   */
+  public void armHold(String name) {
+    gates.put(name, new Hold(name));
+  }
+
+  /** hold 로 무장한 지점에 스레드가 붙잡힐 때까지 기다린다. 상한 안에 아무도 오지 않으면 실패한다. */
+  public void awaitArrival(String name) {
+    hold(name).awaitArrival();
+  }
+
+  /** hold 로 붙잡아 둔 스레드를 풀어 준다. */
+  public void release(String name) {
+    hold(name).release();
+  }
+
+  private Hold hold(String name) {
+    if (gates.get(name) instanceof Hold hold) {
+      return hold;
+    }
+    throw new IllegalStateException("'" + name + "' 은 hold 로 무장되지 않았다");
+  }
+
   /** 무장된 게이트라면 다른 참가자를 기다린다. 무장 전이거나 이미 통과한 스레드면 그냥 돌아간다. */
   public void pass(String name) {
-    Gate gate = gates.get(name);
+    Point gate = gates.get(name);
     if (gate != null) {
       gate.pass();
     }
@@ -64,11 +96,18 @@ public class ConcurrencyGate {
    * 정리 규약이 담당한다. 어떻게 끝났든 다음 테스트로 새지 않는다.
    */
   public void reset() {
-    gates.values().forEach(Gate::release);
+    gates.values().forEach(Point::release);
     gates.clear();
   }
 
-  private static final class Gate {
+  private interface Point {
+
+    void pass();
+
+    void release();
+  }
+
+  private static final class Gate implements Point {
 
     private final String name;
     private final CyclicBarrier barrier;
@@ -79,7 +118,8 @@ public class ConcurrencyGate {
       this.barrier = new CyclicBarrier(parties);
     }
 
-    private void pass() {
+    @Override
+    public void pass() {
       if (!arrived.add(Thread.currentThread().getId())) {
         return;
       }
@@ -96,8 +136,52 @@ public class ConcurrencyGate {
       }
     }
 
-    private void release() {
+    @Override
+    public void release() {
       barrier.reset();
+    }
+  }
+
+  private static final class Hold implements Point {
+
+    private final String name;
+    private final AtomicBoolean captured = new AtomicBoolean();
+    private final CountDownLatch arrival = new CountDownLatch(1);
+    private final CountDownLatch released = new CountDownLatch(1);
+
+    private Hold(String name) {
+      this.name = name;
+    }
+
+    @Override
+    public void pass() {
+      // 한 스레드만 붙잡는다. 같은 스레드가 다시 와도, 다른 스레드가 와도 이미 붙잡은 뒤라 그냥 지나간다.
+      if (!captured.compareAndSet(false, true)) {
+        return;
+      }
+      arrival.countDown();
+      await(released, "release 되지 않았다");
+    }
+
+    private void awaitArrival() {
+      await(arrival, "붙잡힌 스레드가 없다");
+    }
+
+    @Override
+    public void release() {
+      released.countDown();
+    }
+
+    private void await(CountDownLatch latch, String reason) {
+      try {
+        if (!latch.await(TIMEOUT.toMillis(), TimeUnit.MILLISECONDS)) {
+          throw new IllegalStateException(
+              "hold '" + name + "' 가 " + TIMEOUT.toSeconds() + "초 안에 " + reason);
+        }
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        throw new IllegalStateException("hold '" + name + "' 대기 중 인터럽트", e);
+      }
     }
   }
 }
