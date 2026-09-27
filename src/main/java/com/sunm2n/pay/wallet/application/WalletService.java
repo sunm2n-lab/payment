@@ -35,6 +35,19 @@ public class WalletService {
     return updater.credit(memberId, amount);
   }
 
+  /**
+   * 회원의 지갑 id. 결제 생성(MONEY)이 {@code payment.wallet_id} 를 정할 때 쓴다.
+   *
+   * <p>잔액을 읽지도 바꾸지도 않으므로 전략({@link WalletBalanceUpdater})에 두지 않는다. 결제가 지갑 리포지터리를 직접 부르지 않게 하려는 조회
+   * 창구다.
+   */
+  @Transactional(readOnly = true)
+  public Long findIdByMemberId(Long memberId) {
+    return walletRepository
+        .findIdByMemberId(memberId)
+        .orElseThrow(() -> new WalletNotFoundException(memberId));
+  }
+
   @Transactional(readOnly = true)
   public Wallet get(Long memberId) {
     return walletRepository

@@ -10,13 +10,12 @@ import com.sunm2n.pay.payment.domain.exception.InvalidPaymentStatusException;
 import com.sunm2n.pay.payment.infrastructure.PaymentCancelRepository;
 import com.sunm2n.pay.payment.infrastructure.PaymentRepository;
 import com.sunm2n.pay.payment.infrastructure.card.CardApprovalClient;
+import com.sunm2n.pay.wallet.application.WalletService;
 import com.sunm2n.pay.wallet.domain.Amounts;
 import com.sunm2n.pay.wallet.domain.LedgerType;
 import com.sunm2n.pay.wallet.domain.Wallet;
 import com.sunm2n.pay.wallet.domain.WalletLedger;
-import com.sunm2n.pay.wallet.domain.exception.WalletNotFoundException;
 import com.sunm2n.pay.wallet.infrastructure.WalletLedgerRepository;
-import com.sunm2n.pay.wallet.infrastructure.WalletRepository;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,7 +35,7 @@ public class PaymentService {
 
   private final PaymentRepository paymentRepository;
   private final PaymentCancelRepository paymentCancelRepository;
-  private final WalletRepository walletRepository;
+  private final WalletService walletService;
   private final WalletLedgerRepository walletLedgerRepository;
   private final CardApprovalClient cardApprovalClient;
   private final PaymentSupport support;
@@ -45,31 +44,27 @@ public class PaymentService {
   public PaymentService(
       PaymentRepository paymentRepository,
       PaymentCancelRepository paymentCancelRepository,
-      WalletRepository walletRepository,
+      WalletService walletService,
       WalletLedgerRepository walletLedgerRepository,
       CardApprovalClient cardApprovalClient,
       PaymentSupport support,
       PaymentConfirmer confirmer) {
     this.paymentRepository = paymentRepository;
     this.paymentCancelRepository = paymentCancelRepository;
-    this.walletRepository = walletRepository;
+    this.walletService = walletService;
     this.walletLedgerRepository = walletLedgerRepository;
     this.cardApprovalClient = cardApprovalClient;
     this.support = support;
     this.confirmer = confirmer;
   }
 
-  /** 결제 생성. MONEY 는 memberId 로 지갑을 찾아 wallet_id 를 저장한다. */
+  /** 결제 생성. MONEY 는 memberId 로 지갑 id 를 찾아 wallet_id 로 저장한다. 잔액은 읽지 않는다. */
   @Transactional
   public Payment create(
       Long merchantId, String orderId, long amount, PaymentMethod method, Long memberId) {
     Long walletId = null;
     if (method == PaymentMethod.MONEY) {
-      walletId =
-          walletRepository
-              .findByMemberId(memberId)
-              .orElseThrow(() -> new WalletNotFoundException(memberId))
-              .getId();
+      walletId = walletService.findIdByMemberId(memberId);
     }
 
     Payment payment =
