@@ -18,21 +18,21 @@ import com.sunm2n.pay.wallet.infrastructure.WalletRepository;
  *
  * <p>{@link Wallet} 엔티티를 <b>로드하지 않는다.</b> 이유는 {@code WalletRepository.findBalanceById} 주석에 있다.
  *
- * <p>충전은 관찰 대상이 아니므로 naive 에 위임한다.
+ * <p>충전과 환불은 관찰 대상이 아니므로 naive 에 위임한다.
  */
 public class AtomicDecrementWalletBalanceUpdater implements WalletBalanceUpdater {
 
   private final WalletRepository walletRepository;
   private final WalletLedgerRepository walletLedgerRepository;
-  private final WalletBalanceUpdater creditDelegate;
+  private final WalletBalanceUpdater naiveDelegate;
 
   public AtomicDecrementWalletBalanceUpdater(
       WalletRepository walletRepository,
       WalletLedgerRepository walletLedgerRepository,
-      WalletBalanceUpdater creditDelegate) {
+      WalletBalanceUpdater naiveDelegate) {
     this.walletRepository = walletRepository;
     this.walletLedgerRepository = walletLedgerRepository;
-    this.creditDelegate = creditDelegate;
+    this.naiveDelegate = naiveDelegate;
   }
 
   @Override
@@ -53,6 +53,11 @@ public class AtomicDecrementWalletBalanceUpdater implements WalletBalanceUpdater
 
   @Override
   public Wallet credit(Long memberId, long amount) {
-    return creditDelegate.credit(memberId, amount);
+    return naiveDelegate.credit(memberId, amount);
+  }
+
+  @Override
+  public void refund(Long walletId, Long paymentId, long amount) {
+    naiveDelegate.refund(walletId, paymentId, amount);
   }
 }

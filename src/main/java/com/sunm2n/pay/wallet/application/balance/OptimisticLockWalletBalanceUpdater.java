@@ -21,21 +21,21 @@ import com.sunm2n.pay.wallet.infrastructure.WalletLedgerRepository;
  * <p>{@link VersionedWallet} 만 쓴다. 한 트랜잭션에서 {@link Wallet} 과 섞지 않는다 - 두 엔티티가 같은 행을 가리키므로 영속성 컨텍스트에
  * 같은 행의 상태가 둘 생긴다.
  *
- * <p>충전은 naive 에 위임한다. 낙관적 실험 중 충전은 사전 시딩만 하므로 관찰 대상이 아니다.
+ * <p>충전과 환불은 naive 에 위임한다. 낙관적 실험 중 충전은 사전 시딩만 하고 환불은 하지 않으므로 관찰 대상이 아니다.
  */
 public class OptimisticLockWalletBalanceUpdater implements WalletBalanceUpdater {
 
   private final VersionedWalletRepository versionedWalletRepository;
   private final WalletLedgerRepository walletLedgerRepository;
-  private final WalletBalanceUpdater creditDelegate;
+  private final WalletBalanceUpdater naiveDelegate;
 
   public OptimisticLockWalletBalanceUpdater(
       VersionedWalletRepository versionedWalletRepository,
       WalletLedgerRepository walletLedgerRepository,
-      WalletBalanceUpdater creditDelegate) {
+      WalletBalanceUpdater naiveDelegate) {
     this.versionedWalletRepository = versionedWalletRepository;
     this.walletLedgerRepository = walletLedgerRepository;
-    this.creditDelegate = creditDelegate;
+    this.naiveDelegate = naiveDelegate;
   }
 
   @Override
@@ -54,6 +54,11 @@ public class OptimisticLockWalletBalanceUpdater implements WalletBalanceUpdater 
 
   @Override
   public Wallet credit(Long memberId, long amount) {
-    return creditDelegate.credit(memberId, amount);
+    return naiveDelegate.credit(memberId, amount);
+  }
+
+  @Override
+  public void refund(Long walletId, Long paymentId, long amount) {
+    naiveDelegate.refund(walletId, paymentId, amount);
   }
 }

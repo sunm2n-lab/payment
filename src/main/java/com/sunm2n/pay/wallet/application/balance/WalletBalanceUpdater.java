@@ -6,7 +6,7 @@ import com.sunm2n.pay.wallet.domain.Wallet;
  * 지갑 잔액 변경 전략.
  *
  * <p>S2 는 잔액을 바꾸는 방식이 다섯으로 갈라진다 (naive / 원자적 감산 / 조건부 감산 / 낙관적 락 / 비관적 락). 갈라지는 지점은 승인의 MONEY 분기와
- * 충전 둘뿐이고 나머지는 같아야 하므로, 그 둘만 이 이음매로 뽑아낸다. {@link
+ * 충전, 그리고 S3 에서 더한 취소 환불이고 나머지는 같아야 하므로, 그 지점만 이 이음매로 뽑아낸다. {@link
  * com.sunm2n.pay.payment.application.confirmation.PaymentConfirmer} 가 "상태 전이를 어떻게 확정하느냐" 하나로 갈렸던 것과
  * 같은 방식이다.
  *
@@ -40,4 +40,19 @@ public interface WalletBalanceUpdater {
    * 담기 때문이다.
    */
   Wallet credit(Long memberId, long amount);
+
+  /**
+   * 취소 환불. REFUND 원장까지 남긴다.
+   *
+   * <p>S3 에서 결제 쪽에 있던 환불 코드를 이리로 옮겼다. 차감·충전과 <b>같은 전략</b>으로 묶는 것이 요점이다. 같은 {@code wallet} 행을 바꾸는 경로
+   * 하나라도 잠금 없이 읽고 쓰면, 다른 경로가 {@code FOR UPDATE} 로 잠가 둔 효과가 사라진다 — 잠금 없이 읽은 쪽이 나중에 옛 값으로 계산한 절대값을
+   * 덮어쓴다. 환불 전략을 따로 고를 수 있게 두면 "차감은 비관적, 환불은 naive" 같은 틀린 조합이 가능해진다.
+   *
+   * <p>{@link #credit} 과 합치지 않는다. 지갑을 찾는 키(walletId / memberId), 원장 타입(REFUND / CHARGE), {@code
+   * paymentId} 유무가 모두 다르다. {@code paymentId} 는 {@code Long} 이라 {@code wallet -> payment} import 가
+   * 생기지 않는다.
+   *
+   * @throws com.sunm2n.pay.wallet.domain.exception.BalanceOverflowException 잔액이 long 범위를 넘을 때
+   */
+  void refund(Long walletId, Long paymentId, long amount);
 }

@@ -18,21 +18,21 @@ import com.sunm2n.pay.wallet.infrastructure.WalletRepository;
  * <p>성공 경로에서는 <b>지갑을 읽지 않는다.</b> 검사가 UPDATE 안에 있으므로 읽을 이유가 없고, 읽지 않으므로 오래된 엔티티도 생기지 않는다. 대신 거절할 때
  * 잔액을 주장할 수 없다 ({@link InsufficientBalanceException#notEnough}).
  *
- * <p>충전은 관찰 대상이 아니므로 naive 에 위임한다.
+ * <p>충전과 환불은 관찰 대상이 아니므로 naive 에 위임한다.
  */
 public class GuardedDecrementWalletBalanceUpdater implements WalletBalanceUpdater {
 
   private final WalletRepository walletRepository;
   private final WalletLedgerRepository walletLedgerRepository;
-  private final WalletBalanceUpdater creditDelegate;
+  private final WalletBalanceUpdater naiveDelegate;
 
   public GuardedDecrementWalletBalanceUpdater(
       WalletRepository walletRepository,
       WalletLedgerRepository walletLedgerRepository,
-      WalletBalanceUpdater creditDelegate) {
+      WalletBalanceUpdater naiveDelegate) {
     this.walletRepository = walletRepository;
     this.walletLedgerRepository = walletLedgerRepository;
-    this.creditDelegate = creditDelegate;
+    this.naiveDelegate = naiveDelegate;
   }
 
   @Override
@@ -51,6 +51,11 @@ public class GuardedDecrementWalletBalanceUpdater implements WalletBalanceUpdate
 
   @Override
   public Wallet credit(Long memberId, long amount) {
-    return creditDelegate.credit(memberId, amount);
+    return naiveDelegate.credit(memberId, amount);
+  }
+
+  @Override
+  public void refund(Long walletId, Long paymentId, long amount) {
+    naiveDelegate.refund(walletId, paymentId, amount);
   }
 }

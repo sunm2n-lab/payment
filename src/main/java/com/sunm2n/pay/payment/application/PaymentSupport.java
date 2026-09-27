@@ -1,17 +1,18 @@
 package com.sunm2n.pay.payment.application;
 
 import com.sunm2n.pay.payment.domain.Payment;
+import com.sunm2n.pay.payment.domain.PaymentCancel;
 import com.sunm2n.pay.payment.domain.PaymentMethod;
 import com.sunm2n.pay.payment.domain.PaymentStatus;
+import com.sunm2n.pay.payment.domain.exception.CancelAmountExceededException;
 import com.sunm2n.pay.payment.domain.exception.InvalidPaymentStatusException;
 import com.sunm2n.pay.payment.domain.exception.PaymentMismatchException;
 import com.sunm2n.pay.payment.domain.exception.PaymentNotFoundException;
+import com.sunm2n.pay.payment.infrastructure.PaymentCancelRepository;
 import com.sunm2n.pay.payment.infrastructure.PaymentRepository;
 import com.sunm2n.pay.payment.infrastructure.card.CardApproval;
 import com.sunm2n.pay.payment.infrastructure.card.CardApprovalClient;
 import com.sunm2n.pay.wallet.application.balance.WalletBalanceUpdater;
-import com.sunm2n.pay.wallet.domain.Wallet;
-import com.sunm2n.pay.wallet.infrastructure.WalletRepository;
 import java.time.LocalDateTime;
 import org.springframework.stereotype.Component;
 
@@ -21,21 +22,23 @@ import org.springframework.stereotype.Component;
  * <p>S1 에서 confirm 구현이 naive 와 CAS 둘로 갈라지면서 뽑아낸 것이다. 두 구현의 차이는 <b>상태 전이를 어떻게 확정하느냐</b> 하나뿐이고 나머지는
  * 같아야 한다. 그래야 재현과 개선의 비교가 그 차이 하나로 설명된다.
  *
- * <p>스스로 트랜잭션을 열지 않는다. 호출자(confirmer, {@link PaymentService})의 트랜잭션에 참여한다.
+ * <p>S3 의 취소도 같은 방식으로 갈라져 취소 본문이 여기 있다.
+ *
+ * <p>스스로 트랜잭션을 열지 않는다. 호출자(confirmer, canceller, {@link PaymentService})의 트랜잭션에 참여한다.
  */
 @Component
 public class PaymentSupport {
 
   private final PaymentRepository paymentRepository;
-  private final WalletRepository walletRepository;
+  private final PaymentCancelRepository paymentCancelRepository;
   private final CardApprovalClient cardApprovalClient;
 
   public PaymentSupport(
       PaymentRepository paymentRepository,
-      WalletRepository walletRepository,
+      PaymentCancelRepository paymentCancelRepository,
       CardApprovalClient cardApprovalClient) {
     this.paymentRepository = paymentRepository;
-    this.walletRepository = walletRepository;
+    this.paymentCancelRepository = paymentCancelRepository;
     this.cardApprovalClient = cardApprovalClient;
   }
 
@@ -106,20 +109,40 @@ public class PaymentSupport {
   }
 
   /**
-   * 취소의 REFUND 경로가 쓰는 지갑 조회. 생성 시점에 확정된 wallet_id 이며, 여기서 없다면 데이터 불일치이므로 예상 밖 오류(5xx)로 둔다.
+   * 취소 본문. 상태·잔여 금액을 검사하고, 취소 이력을 남기고, 환불 또는 카드 취소를 한다.
    *
-   * <p>승인 경로는 더 이상 이 메서드를 쓰지 않는다. 지갑을 어떻게 읽느냐가 전략의 일부이기 때문이다 (잠금 없이 읽을지, {@code FOR UPDATE} 로 잠그며
-   * 읽을지, 아예 엔티티로 읽지 않을지). 취소에 같은 결론을 적용하는 것은 S3 다.
+   * <p>S3 에서 취소 구현이 naive 와 비관적 락 둘로 갈라지면서 뽑아낸 것이다. 두 구현의 차이는 <b>결제를 어떻게 읽느냐</b>(잠금 없이 / 잠그며)와
+   * <b>어떤 updater 를 쓰느냐</b>뿐이고 나머지는 여기서 같아야 한다. 검사가 받은 {@code payment} 의 값을 믿으므로, 그 값이 잠근 뒤에 읽은
+   * 것인지는 호출자가 책임진다.
+   *
+   * <p>검사 순서는 <b>상태 → 금액</b>이다. 그래서 전액취소가 먼저 커밋된 뒤 온 요청은 금액 초과가 아니라 상태 오류를 받는다.
+   *
+   * <p>환불은 {@link WalletBalanceUpdater#refund} 가 소유한다. 지갑을 어떻게 읽느냐(잠금 없이 / {@code FOR UPDATE})가
+   * 차감·충전과 같은 전략의 일부라서다. 카드 취소 호출은 호출자의 트랜잭션 안에서 한다 — 외부 호출 동안 락을 붙드는 문제는 S8 이다.
    */
-  public Wallet loadWallet(Payment payment) {
-    return walletRepository
-        .findById(payment.getWalletId())
-        .orElseThrow(
-            () ->
-                new IllegalStateException(
-                    "결제에 연결된 지갑이 없습니다. paymentKey="
-                        + payment.getPaymentKey()
-                        + ", walletId="
-                        + payment.getWalletId()));
+  public Payment cancel(
+      Payment payment, long cancelAmount, String reason, WalletBalanceUpdater updater) {
+    if (payment.getStatus() != PaymentStatus.DONE
+        && payment.getStatus() != PaymentStatus.PARTIAL_CANCELED) {
+      throw new InvalidPaymentStatusException(payment.getPaymentKey(), payment.getStatus(), "취소");
+    }
+    if (payment.getBalanceAmount() < cancelAmount) {
+      throw new CancelAmountExceededException(
+          payment.getPaymentKey(), payment.getBalanceAmount(), cancelAmount);
+    }
+
+    paymentCancelRepository.save(new PaymentCancel(payment.getId(), cancelAmount, reason));
+
+    payment.setBalanceAmount(payment.getBalanceAmount() - cancelAmount);
+    payment.setStatus(
+        payment.getBalanceAmount() == 0 ? PaymentStatus.CANCELED : PaymentStatus.PARTIAL_CANCELED);
+
+    if (payment.getMethod() == PaymentMethod.MONEY) {
+      updater.refund(payment.getWalletId(), payment.getId(), cancelAmount);
+    } else {
+      cardApprovalClient.cancel(payment.getCardApprovalNo(), cancelAmount);
+    }
+
+    return payment;
   }
 }
