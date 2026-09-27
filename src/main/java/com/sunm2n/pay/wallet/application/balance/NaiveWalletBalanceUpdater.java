@@ -54,6 +54,15 @@ public class NaiveWalletBalanceUpdater implements WalletBalanceUpdater {
     return wallet;
   }
 
+  /** 환불도 같은 절대 규칙이다. 잠금 없이 읽은 잔액에 더한 값을 저장하므로 같은 지갑의 다른 갱신을 덮어쓴다 — S3 재현 2 의 대상이다. */
+  @Override
+  public void refund(Long walletId, Long paymentId, long amount) {
+    Wallet wallet = load(walletId);
+
+    wallet.setBalance(Amounts.add(wallet.getBalance(), amount));
+    walletLedgerRepository.save(new WalletLedger(walletId, LedgerType.REFUND, amount, paymentId));
+  }
+
   /** 결제 생성 시점에 확정된 wallet_id 다. 여기서 없다면 데이터 불일치이므로 예상 밖 오류(5xx)로 둔다. */
   private Wallet load(Long walletId) {
     return walletRepository

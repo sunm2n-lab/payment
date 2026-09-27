@@ -59,6 +59,15 @@ public class PessimisticLockWalletBalanceUpdater implements WalletBalanceUpdater
     return wallet;
   }
 
+  /** 환불도 잠그며 읽는다. 취소가 이미 payment 를 잠근 뒤라 순서는 승인과 같은 {@code payment -> wallet} 이다. */
+  @Override
+  public void refund(Long walletId, Long paymentId, long amount) {
+    Wallet wallet = lock(walletId);
+
+    wallet.setBalance(Amounts.add(wallet.getBalance(), amount));
+    walletLedgerRepository.save(new WalletLedger(walletId, LedgerType.REFUND, amount, paymentId));
+  }
+
   private Wallet lock(Long walletId) {
     return walletRepository
         .findByIdForUpdate(walletId)
