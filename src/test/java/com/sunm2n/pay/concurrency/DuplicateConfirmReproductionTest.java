@@ -8,7 +8,7 @@ import com.sunm2n.pay.payment.application.confirmation.NaivePaymentConfirmer;
 import com.sunm2n.pay.payment.application.confirmation.PaymentConfirmer;
 import com.sunm2n.pay.payment.domain.Payment;
 import com.sunm2n.pay.payment.domain.PaymentMethod;
-import com.sunm2n.pay.support.AbstractIntegrationTest;
+import com.sunm2n.pay.support.AbstractV2SchemaTest;
 import com.sunm2n.pay.support.ConcurrencyGate;
 import com.sunm2n.pay.support.ConcurrentRunner;
 import com.sunm2n.pay.support.Seeds;
@@ -34,7 +34,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
  * <p>승인은 {@link NaivePaymentConfirmer} 를 직접 호출한다. 기본 구현은 S1 에서 조건부 UPDATE 로 바뀌었으므로 {@link
  * PaymentService} 를 거치면 개선된 경로를 타게 된다. 실패 버전을 코드에 남겨 둔 이유가 바로 이 재현을 계속 실행하기 위해서다.
  */
-class DuplicateConfirmReproductionTest extends AbstractIntegrationTest {
+class DuplicateConfirmReproductionTest extends AbstractV2SchemaTest {
 
   private static final int WORKERS = 5;
   private static final String ORDER_ID = "order-s1";

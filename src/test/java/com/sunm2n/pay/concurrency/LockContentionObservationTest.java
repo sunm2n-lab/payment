@@ -8,7 +8,7 @@ import com.sunm2n.pay.payment.application.confirmation.RetryMetrics;
 import com.sunm2n.pay.payment.application.confirmation.RetryingPaymentConfirmer;
 import com.sunm2n.pay.payment.domain.Payment;
 import com.sunm2n.pay.payment.domain.PaymentMethod;
-import com.sunm2n.pay.support.AbstractIntegrationTest;
+import com.sunm2n.pay.support.AbstractV2SchemaTest;
 import com.sunm2n.pay.support.ConcurrencyGate;
 import com.sunm2n.pay.support.ConcurrentRunner;
 import com.sunm2n.pay.wallet.application.WalletService;
@@ -39,7 +39,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
  * sleep 이 길다" 를 관측하고 끝난다. 백오프 합은 <b>설정값의 합</b>이고 워커별로 병렬로 겹치므로, 총 소요에서 빼는 식으로 쓰지 않는다 - 백오프 0 조건의 총
  * 소요와 견줘서 본다.
  */
-class LockContentionObservationTest extends AbstractIntegrationTest {
+class LockContentionObservationTest extends AbstractV2SchemaTest {
 
   private static final int ROUNDS = 5;
   private static final int WORKERS = 4;
@@ -81,7 +81,12 @@ class LockContentionObservationTest extends AbstractIntegrationTest {
     // 재시도 데코레이터는 트랜잭션을 열지 않으므로 손으로 조립해도 된다. 백오프만 0 으로 바꿔 같은 delegate 를 감싼다.
     PaymentConfirmer withoutBackoff =
         new RetryingPaymentConfirmer(
-            optimisticDebitConfirmer, 4, Duration.ZERO, retryMetrics, duration -> {});
+            optimisticDebitConfirmer,
+            RetryingPaymentConfirmer.OPTIMISTIC_CONFLICT,
+            4,
+            Duration.ZERO,
+            retryMetrics,
+            duration -> {});
 
     List<RoundStats> optimistic = measure("낙관적 락 (백오프 20ms)", optimisticConfirmer);
     List<RoundStats> noBackoff = measure("낙관적 락 (백오프 0)", withoutBackoff);
