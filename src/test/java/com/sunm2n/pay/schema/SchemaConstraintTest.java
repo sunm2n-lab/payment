@@ -56,8 +56,8 @@ class SchemaConstraintTest extends AbstractIntegrationTest {
   }
 
   @Test
-  @DisplayName("V1 이 만든 unique 인덱스는 payment_key / member_id / api_key 셋뿐이다")
-  void onlyThreeUniqueIndexes() {
+  @DisplayName("unique 인덱스는 V1 의 payment_key / member_id / api_key 와 V5 의 멱등키뿐이다")
+  void onlyExpectedUniqueIndexes() {
     List<String> uniqueIndexes =
         jdbcTemplate.queryForList(
             "SELECT DISTINCT index_name FROM information_schema.statistics"
@@ -66,7 +66,10 @@ class SchemaConstraintTest extends AbstractIntegrationTest {
 
     assertThat(uniqueIndexes)
         .containsExactlyInAnyOrder(
-            "uk_payment_payment_key", "uk_wallet_member_id", "uk_merchant_api_key");
+            "uk_payment_payment_key",
+            "uk_wallet_member_id",
+            "uk_merchant_api_key",
+            "uk_idempotency_key");
   }
 
   @Test

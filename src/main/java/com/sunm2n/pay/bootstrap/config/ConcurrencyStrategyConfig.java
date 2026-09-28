@@ -1,5 +1,6 @@
 package com.sunm2n.pay.bootstrap.config;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sunm2n.pay.idempotency.IdempotencyKeyStore;
 import com.sunm2n.pay.payment.application.IdempotentCancelCoordinator;
 import com.sunm2n.pay.payment.application.PaymentService;
@@ -30,6 +31,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
+import org.springframework.transaction.PlatformTransactionManager;
 
 /**
  * 동시성 전략의 조합을 한곳에 모은다.
@@ -290,8 +292,12 @@ public class ConcurrencyStrategyConfig {
    * {@link #pessimisticPaymentCanceller} 그대로다.
    */
   @Bean
-  IdempotentCancelCoordinator idempotentCancelCoordinator(PaymentService paymentService) {
-    return new IdempotentCancelCoordinator(paymentService);
+  IdempotentCancelCoordinator idempotentCancelCoordinator(
+      PaymentService paymentService,
+      IdempotencyKeyStore store,
+      PlatformTransactionManager transactionManager,
+      ObjectMapper objectMapper) {
+    return new IdempotentCancelCoordinator(paymentService, store, transactionManager, objectMapper);
   }
 
   /** 충전 경쟁 재현용. 본선이 바뀌어도 이 빈은 Phase 0 의 충전 경로를 유지한다. */

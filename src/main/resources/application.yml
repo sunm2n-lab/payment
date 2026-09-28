@@ -26,6 +26,11 @@ spring:
 server:
   port: 8080
 
+payment:
+  idempotency:
+    # 멱등키 선점 INSERT 한 문장에만 적용하는 락 대기 상한. 넘으면 409 IDEMPOTENCY_KEY_IN_USE (docs/plan/S5.md 4.4)
+    claim-lock-wait-timeout-seconds: 3
+
 management:
   endpoints.web.exposure.include: health,metrics # S8 의 Hikari 메트릭 관측용
 

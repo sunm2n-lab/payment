@@ -21,6 +21,9 @@ public final class MySqlLockErrors {
    */
   public static final int LOCK_WAIT_TIMEOUT = 1205;
 
+  /** {@code ER_DUP_ENTRY}. unique 위반. 락 실패는 아니지만 S5 의 키 선점은 이 코드로 판정한다. */
+  public static final int DUPLICATE_KEY = 1062;
+
   private MySqlLockErrors() {}
 
   public static boolean isDeadlock(Throwable throwable) {
@@ -29,6 +32,28 @@ public final class MySqlLockErrors {
 
   public static boolean isLockWaitTimeout(Throwable throwable) {
     return hasErrorCode(throwable, LOCK_WAIT_TIMEOUT);
+  }
+
+  /**
+   * 주어진 unique 인덱스의 위반(1062)인가. 에러 코드만으로는 어느 제약인지 모르므로 메시지 끝의 인덱스 이름을 본다.
+   *
+   * <p>MySQL 8.0 의 메시지는 {@code Duplicate entry '...' for key '<table>.<index>'} 로 끝난다. 앞쪽의 중복 값에는
+   * 사용자 입력이 들어가므로 끝부분만 본다.
+   */
+  public static boolean isDuplicateKey(Throwable throwable, String indexName) {
+    for (Throwable t = throwable; t != null; t = t.getCause()) {
+      if (t instanceof SQLException sql
+          && sql.getErrorCode() == DUPLICATE_KEY
+          && sql.getMessage() != null
+          && (sql.getMessage().endsWith("." + indexName + "'")
+              || sql.getMessage().endsWith("'" + indexName + "'"))) {
+        return true;
+      }
+      if (t.getCause() == t) {
+        return false;
+      }
+    }
+    return false;
   }
 
   private static boolean hasErrorCode(Throwable throwable, int errorCode) {

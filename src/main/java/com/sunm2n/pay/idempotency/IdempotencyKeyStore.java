@@ -14,6 +14,21 @@ import java.util.Optional;
  */
 public interface IdempotencyKeyStore {
 
+  /**
+   * <b>본선.</b> 키를 먼저 쓴다 (insert-first). 상태는 {@code IN_PROGRESS} 이고, 같은 트랜잭션의 {@link #complete} 가
+   * 마무리한다.
+   *
+   * <p>같은 키의 선행 트랜잭션이 진행 중이면 unique 검사에서 그 트랜잭션이 끝나기를 기다린다. 선행이 커밋하면 {@link
+   * IdempotencyKeyClaimedException}, 롤백하면 위반 없이 그대로 성공한다. 대기에는 이 INSERT 한 문장에만 짧은 상한을 두고, 넘으면
+   * {@link IdempotencyKeyInUseException} 이다 ({@code docs/plan/S5.md} 4.4).
+   *
+   * @return 키 행의 id
+   */
+  long claim(Long merchantId, String operation, String idempotencyKey, String requestHash);
+
+  /** <b>본선.</b> 선점한 키 행에 응답을 저장하고 {@code COMPLETED} 로 바꾼다. 본문은 호출하는 업무가 직렬화한 문자열이다. */
+  void complete(long id, int responseStatus, String responseBody);
+
   /** 잠그지 않고 찾는다. 비유일 인덱스(V4)에서는 같은 키의 행이 여럿일 수 있고, 그중 하나를 돌려준다. */
   Optional<IdempotencyRecord> find(Long merchantId, String operation, String idempotencyKey);
 

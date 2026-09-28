@@ -42,6 +42,21 @@ class LatestSchemaContextTest extends AbstractIntegrationTest {
     assertThat(version).isEqualTo(String.valueOf(latestMigrationVersion()));
   }
 
+  @Test
+  @DisplayName(
+      "idempotency_key 에는 (merchant_id, operation, idempotency_key) unique 만 있다 - V5 가 검색 인덱스를 교체했다")
+  void idempotencyKeyIsUnique() {
+    assertThat(IdempotencyKeySchema.nonUniqueOf(jdbcTemplate, "uk_idempotency_key")).isFalse();
+    assertThat(IdempotencyKeySchema.indexNames(jdbcTemplate))
+        .containsExactlyInAnyOrder("PRIMARY", "uk_idempotency_key");
+  }
+
+  @Test
+  @DisplayName("키 컬럼은 ascii_bin 이다 - unique 가 대소문자만 다른 키를 같은 키로 막지 않는다")
+  void keyColumnIsCaseSensitive() {
+    assertThat(IdempotencyKeySchema.keyCollation(jdbcTemplate)).isEqualTo("ascii_bin");
+  }
+
   private static int latestMigrationVersion() throws IOException {
     return Arrays.stream(
             new PathMatchingResourcePatternResolver().getResources("classpath:db/migration/*.sql"))
