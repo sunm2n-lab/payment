@@ -2,6 +2,9 @@ package com.sunm2n.pay.bootstrap.web;
 
 import com.sunm2n.pay.common.exception.DomainException;
 import com.sunm2n.pay.common.web.error.ErrorResponse;
+import com.sunm2n.pay.idempotency.IdempotencyKeyInUseException;
+import com.sunm2n.pay.idempotency.IdempotencyKeyReusedException;
+import com.sunm2n.pay.idempotency.InvalidIdempotencyKeyException;
 import com.sunm2n.pay.merchant.api.auth.UnauthorizedMerchantException;
 import com.sunm2n.pay.payment.domain.exception.CancelAmountExceededException;
 import com.sunm2n.pay.payment.domain.exception.InvalidPaymentStatusException;
@@ -92,6 +95,27 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
   public ResponseEntity<Object> handleCancelExceeded(
       CancelAmountExceededException e, WebRequest request) {
     return error(e, HttpStatus.CONFLICT, "CANCEL_AMOUNT_EXCEEDED", e.getMessage(), request);
+  }
+
+  /** 같은 멱등키에 다른 요청 내용. 저장된 응답을 돌려주지 않는다 (S5). */
+  @ExceptionHandler(IdempotencyKeyReusedException.class)
+  public ResponseEntity<Object> handleIdempotencyKeyReused(
+      IdempotencyKeyReusedException e, WebRequest request) {
+    return error(e, HttpStatus.CONFLICT, "IDEMPOTENCY_KEY_REUSED", e.getMessage(), request);
+  }
+
+  /** 같은 멱등키의 선행 요청이 처리 중이고 선점 대기 상한을 넘었다. 재시도 가능한 충돌이다 (S5). */
+  @ExceptionHandler(IdempotencyKeyInUseException.class)
+  public ResponseEntity<Object> handleIdempotencyKeyInUse(
+      IdempotencyKeyInUseException e, WebRequest request) {
+    return error(e, HttpStatus.CONFLICT, "IDEMPOTENCY_KEY_IN_USE", e.getMessage(), request);
+  }
+
+  /** {@code Idempotency-Key} 헤더 형식 오류. 헤더를 보내지 않은 것은 오류가 아니다 (S5). */
+  @ExceptionHandler(InvalidIdempotencyKeyException.class)
+  public ResponseEntity<Object> handleInvalidIdempotencyKey(
+      InvalidIdempotencyKeyException e, WebRequest request) {
+    return error(e, HttpStatus.BAD_REQUEST, "INVALID_REQUEST", e.getMessage(), request);
   }
 
   /**

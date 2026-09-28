@@ -64,6 +64,22 @@ public class ConcurrencyGate {
    */
   public static final String LEDGER_INSERTED = "ledger-inserted";
 
+  /**
+   * {@code IdempotencyKeyStore} 의 키 조회 <b>반환 직후</b> — 모두 "키 없음" 을 본 시점 (S5 1·2차).
+   *
+   * <p>2차의 {@code FOR UPDATE} 조회도 반환 직후에 모은다. 없는 키를 잠그며 찾으면 X <b>갭</b>락을 잡는데, 갭락끼리는 공존하므로 참가자가 모두
+   * 도착한다 — {@link #LEDGER_INSERTED} 와 같은 예외다. 있는 키의 레코드 락이면 두 번째 참가자가 막혀 상한에 걸린다.
+   */
+  public static final String KEY_LOOKED_UP = "key-looked-up";
+
+  /**
+   * {@code IdempotencyKeyStore.claim} <b>반환 직후</b> — 선행이 키를 INSERT 해 쥔 시점 (S5 본선). hold 로 쓴다.
+   *
+   * <p>후속의 같은 키 INSERT 는 unique 중복 검사에서 선행이 끝나기를 기다린다. 선행을 여기 붙잡은 채 {@code LockWaitProbe} 로 그 대기를
+   * 확인한 뒤 풀어 준다. 선행이 이 시점까지 가진 락은 키 행뿐이라 후속의 다른 경로를 막지 않는다.
+   */
+  public static final String KEY_CLAIMED = "key-claimed";
+
   private static final Duration TIMEOUT = Duration.ofSeconds(10);
 
   private final Map<String, Point> gates = new ConcurrentHashMap<>();

@@ -31,6 +31,9 @@ DTO 를 직접 반환한다. `data` 같은 래퍼를 두지 않는다. 테스트
 | 승인할 수 없는 결제 상태 | 409 | `INVALID_PAYMENT_STATUS` | 예외 메시지 |
 | 승인 값 불일치 | 409 | `PAYMENT_MISMATCH` | 예외 메시지 |
 | 취소 가능 금액 초과 | 409 | `CANCEL_AMOUNT_EXCEEDED` | 예외 메시지 |
+| 같은 멱등키에 다른 요청 내용 (S5) | 409 | `IDEMPOTENCY_KEY_REUSED` | 예외 메시지 |
+| 같은 멱등키의 선행 요청 처리 중, 선점 대기 상한 초과 (S5) | 409 | `IDEMPOTENCY_KEY_IN_USE` | 예외 메시지. 같은 키로 다시 보내면 되는 재시도 가능한 충돌 |
+| `Idempotency-Key` 헤더 형식 오류 (S5) | 400 | `INVALID_REQUEST` | `Idempotency-Key: <사유>` |
 | Bean Validation | 400 | `INVALID_REQUEST` | 첫 필드 오류 `field: message`, 없으면 첫 전역 오류, 없으면 `요청 값이 올바르지 않습니다.` |
 | 본문 파싱 (깨진 JSON, 알 수 없는 enum, 소수 금액 등) | 400 | `INVALID_REQUEST` | `요청 본문을 해석할 수 없습니다.` |
 | 경로 변수 타입 불일치 | 400 | `INVALID_REQUEST` | `<변수명>: 값의 형식이 올바르지 않습니다.` |
@@ -57,6 +60,27 @@ DTO 를 직접 반환한다. `data` 같은 래퍼를 두지 않는다. 테스트
 ### 2.2 범위
 
 DispatcherServlet 이 처리하는 요청까지다. 필터 단계의 오류, 연결 단절, 응답 전송 실패는 JSON 을 보장하지 않는다.
+
+### 2.3 멱등키 — 취소 (S5)
+
+`POST /v1/payments/{paymentKey}/cancel` 은 `Idempotency-Key` 헤더를 **선택**으로 받는다. 상세와 근거는 [phase1/S5.md](phase1/S5.md) 5절.
+
+| 요청 | 응답 |
+|---|---|
+| 헤더 없음 | 기존과 같다. 중복 방지 없음 — 다시 보내면 다시 처리된다 |
+| 새 키 | 처리하고 성공 응답(200)을 저장한다 |
+| 같은 키·같은 내용, 선행 완료 | **저장된 응답** (200, 당시 본문). 결제를 다시 조회하지 않는다 |
+| 같은 키·같은 내용, 선행 처리 중 | 선행이 끝날 때까지 기다린다. 선행이 커밋하면 저장된 응답, 롤백하면 이 요청이 처리된다 |
+| 선행 처리 중이고 대기가 3초를 넘음 | 409 `IDEMPOTENCY_KEY_IN_USE` |
+| 같은 키·다른 내용 (`paymentKey`·`cancelAmount`·`reason`, `reason` 의 `null` 과 `""` 는 다르다) | 409 `IDEMPOTENCY_KEY_REUSED`. 저장된 응답을 주지 않는다 |
+| 업무 실패 (409 등) | 기존과 같다. 키는 저장되지 않는다 — 같은 키로 다시 보내면 재실행된다 |
+| 형식 오류 | 400 `INVALID_REQUEST` |
+
+- **키 규칙**: 1~64자, 출력 가능한 ASCII(`0x21`~`0x7E`)만, 쉼표 금지, 대소문자 구분. 빈 값(`Idempotency-Key:`)은 헤더 없음이 아니라 400 이다. 같은 헤더를 두 번 보내면 값이 쉼표로 합쳐져 400 이다. 앞뒤 공백은 서블릿 컨테이너가 잘라서 넘긴다
+- **범위**: 키는 가맹점별이다. 다른 가맹점이 같은 문자열을 써도 무관하다
+- **동일 응답**의 기준은 HTTP 상태와 JSON 필드·값이다. 필드 순서와 공백은 계약이 아니다
+- **보장 범위**: 같은 키로 커밋되는 취소는 최대 한 건이고 그 성공 응답이 재생된다. 동시 요청이 **모두** 성공 응답을 받는다는 보장은 아니다 — 선행이 롤백할 때 대기자가 둘 이상이면 한 명이 데드락(1213)으로 **500** 을 받을 수 있다. 그 요청도 전체 롤백되므로 같은 키로 다시 보내면 안전하다
+- 다른 API(생성·승인·충전)에는 아직 멱등키가 없다 (Phase 1 종료 점검)
 
 ## 3. 판정 순서
 
@@ -104,11 +128,14 @@ DispatcherServlet 이 처리하는 요청까지다. 필터 단계의 오류, 연
 | `RoutingContractApiTest` | 3절 판정 순서와 `Allow` |
 | `ErrorResponseContractTest` | 2절 본문·Content-Type 을 기본 `Accept` 와 `text/plain` 모두에서. 500 은 standalone 으로 본문과 ERROR 로그 1건(catch-all, Spring MVC 판정 각각) |
 | `ErrorResponseServerTest` | 내장 서버에서 `Accept: text/plain` 404 + JSON |
+| `IdempotentCancelRegressionTest` | 2.3 의 순차 재생·내용 불일치·키 규칙·업무 실패 뒤 재실행 (S5) |
+| `IdempotencyKeyHeaderServerTest` | 내장 서버에서 헤더 앞뒤 공백 제거, 복수 헤더 400, 빈 값 400 (S5) |
 
 ## 6. 범위 밖
 
 | 하지 않는 것 | 비고 |
 |---|---|
-| 멱등키·멱등 응답 | S5 |
+| 취소 외 API 의 멱등키 | Phase 1 종료 점검 (충전은 S5 구현을 `operation=CHARGE` 로 재사용) |
+| 키 INSERT 의 1213 을 재시도 가능한 409 로 번역 | 지금은 500. S5 관측 결과와 함께 후보로 남김 |
 | 기술 예외의 개별 오류 코드 | 지금은 500 |
 | 업무별 advice 분리, 추적 ID, 검증 오류 목록, RFC 7807 `ProblemDetail` | 미정 |

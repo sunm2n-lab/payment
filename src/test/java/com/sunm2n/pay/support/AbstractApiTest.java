@@ -4,6 +4,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
 import com.jayway.jsonpath.JsonPath;
+import com.sunm2n.pay.idempotency.IdempotencyKeys;
 import com.sunm2n.pay.merchant.api.auth.MerchantAuthInterceptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -36,6 +37,19 @@ public abstract class AbstractApiTest extends AbstractIntegrationTest {
   protected ResultActions cancelPayment(String apiKey, String paymentKey, String body)
       throws Exception {
     return mockMvc.perform(json(post("/v1/payments/{key}/cancel", paymentKey), apiKey, body));
+  }
+
+  /**
+   * {@code Idempotency-Key} 를 붙인 취소. 값을 여럿 주면 같은 헤더를 여러 번 보낸다 (S5 회귀 11).
+   *
+   * <p>MockMvc 는 서블릿 컨테이너를 거치지 않는다. 헤더 값의 앞뒤 공백을 컨테이너가 어떻게 넘기는지는 {@code
+   * IdempotencyKeyHeaderServerTest} 가 내장 Tomcat 에서 확인한다.
+   */
+  protected ResultActions cancelPaymentWithKey(
+      String apiKey, String paymentKey, String body, String... idempotencyKeys) throws Exception {
+    return mockMvc.perform(
+        json(post("/v1/payments/{key}/cancel", paymentKey), apiKey, body)
+            .header(IdempotencyKeys.HEADER, (Object[]) idempotencyKeys));
   }
 
   protected ResultActions getPayment(String apiKey, String paymentKey) throws Exception {

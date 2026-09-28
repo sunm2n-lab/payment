@@ -13,7 +13,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
  * 통합 테스트 베이스의 공통 부분 — 주입받는 도구와 테스트 간 정리 규약.
  *
  * <p>어느 데이터베이스에 붙는지는 하위 베이스가 정한다. 최신 스키마는 {@link AbstractIntegrationTest}, 과거 스키마는 {@link
- * AbstractV2SchemaTest} 다. 테스트 클래스는 이 클래스를 직접 상속하지 않는다.
+ * PastSchemaDatabase} 로 등록하는 버전별 베이스({@link AbstractV2SchemaTest} 등)다. 테스트 클래스는 이 클래스를 직접 상속하지 않는다.
  *
  * <p>컨테이너({@link MySqlTestContainer})를 공유하므로 DB 는 테스트 간에 오염된다. 격리는 아래 정리 규약이 담당한다. 같은 이유로 JUnit 병렬
  * 실행을 켜지 않고 Gradle {@code maxParallelForks} 도 1 로 둔다.

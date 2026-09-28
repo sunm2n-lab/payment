@@ -1,7 +1,12 @@
 package com.sunm2n.pay.bootstrap.config;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sunm2n.pay.idempotency.IdempotencyKeyStore;
+import com.sunm2n.pay.payment.application.IdempotentCancelCoordinator;
 import com.sunm2n.pay.payment.application.PaymentService;
 import com.sunm2n.pay.payment.application.PaymentSupport;
+import com.sunm2n.pay.payment.application.cancellation.CheckThenInsertIdempotentCanceller;
+import com.sunm2n.pay.payment.application.cancellation.LockingLookupIdempotentCanceller;
 import com.sunm2n.pay.payment.application.cancellation.NaivePaymentCanceller;
 import com.sunm2n.pay.payment.application.cancellation.PaymentCanceller;
 import com.sunm2n.pay.payment.application.cancellation.PessimisticLockPaymentCanceller;
@@ -26,6 +31,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
+import org.springframework.transaction.PlatformTransactionManager;
 
 /**
  * 동시성 전략의 조합을 한곳에 모은다.
@@ -258,6 +264,40 @@ public class ConcurrencyStrategyConfig {
       PaymentRepository paymentRepository,
       PessimisticLockWalletBalanceUpdater pessimisticUpdater) {
     return new PessimisticLockPaymentCanceller(support, paymentRepository, pessimisticUpdater);
+  }
+
+  /**
+   * S5 1차 재현용 — check-then-insert. 취소는 본선({@link #pessimisticPaymentCanceller})을 그대로 쓴다. 금액 상한은
+   * 지켜지는데 같은 요청이 두 번 실행된다는 것이 1차의 요점이다.
+   */
+  @Bean
+  CheckThenInsertIdempotentCanceller checkThenInsertCanceller(
+      IdempotencyKeyStore store,
+      @Qualifier("pessimisticPaymentCanceller") PaymentCanceller canceller,
+      PaymentSupport support) {
+    return new CheckThenInsertIdempotentCanceller(store, canceller, support);
+  }
+
+  /** S5 2차 재현용 — 키 {@code FOR UPDATE} 조회. 없는 키의 갭락이 공존해 INSERT 끼리 데드락을 만든다. 취소는 1차와 같이 본선이다. */
+  @Bean
+  LockingLookupIdempotentCanceller lockingLookupCanceller(
+      IdempotencyKeyStore store,
+      @Qualifier("pessimisticPaymentCanceller") PaymentCanceller canceller,
+      PaymentSupport support) {
+    return new LockingLookupIdempotentCanceller(store, canceller, support);
+  }
+
+  /**
+   * S5 본선 취소 조율자. {@code PaymentController} 가 부른다. {@link PaymentService#cancel} 에 위임하므로 취소 전략은
+   * {@link #pessimisticPaymentCanceller} 그대로다.
+   */
+  @Bean
+  IdempotentCancelCoordinator idempotentCancelCoordinator(
+      PaymentService paymentService,
+      IdempotencyKeyStore store,
+      PlatformTransactionManager transactionManager,
+      ObjectMapper objectMapper) {
+    return new IdempotentCancelCoordinator(paymentService, store, transactionManager, objectMapper);
   }
 
   /** 충전 경쟁 재현용. 본선이 바뀌어도 이 빈은 Phase 0 의 충전 경로를 유지한다. */
