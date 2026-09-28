@@ -98,11 +98,14 @@ public class ConcurrencyGateConfig {
               Map.of(),
               // 1차의 잠그지 않는 조회와 2차의 FOR UPDATE 조회. 반환 직후면 모두 "키 없음" 을 본 뒤다.
               // 2차는 없는 키의 X 갭락을 잡은 뒤지만 갭락끼리 공존하므로 모인다.
+              // claim 은 본선의 선점 INSERT 다. 반환 직후면 선행이 키 행을 쥐고 있다.
               Map.of(
                   "find",
                   ConcurrencyGate.KEY_LOOKED_UP,
                   "findForUpdate",
-                  ConcurrencyGate.KEY_LOOKED_UP));
+                  ConcurrencyGate.KEY_LOOKED_UP,
+                  "claim",
+                  ConcurrencyGate.KEY_CLAIMED));
         }
         return bean;
       }

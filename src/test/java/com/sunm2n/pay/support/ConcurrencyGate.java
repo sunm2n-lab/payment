@@ -72,6 +72,14 @@ public class ConcurrencyGate {
    */
   public static final String KEY_LOOKED_UP = "key-looked-up";
 
+  /**
+   * {@code IdempotencyKeyStore.claim} <b>반환 직후</b> — 선행이 키를 INSERT 해 쥔 시점 (S5 본선). hold 로 쓴다.
+   *
+   * <p>후속의 같은 키 INSERT 는 unique 중복 검사에서 선행이 끝나기를 기다린다. 선행을 여기 붙잡은 채 {@code LockWaitProbe} 로 그 대기를
+   * 확인한 뒤 풀어 준다. 선행이 이 시점까지 가진 락은 키 행뿐이라 후속의 다른 경로를 막지 않는다.
+   */
+  public static final String KEY_CLAIMED = "key-claimed";
+
   private static final Duration TIMEOUT = Duration.ofSeconds(10);
 
   private final Map<String, Point> gates = new ConcurrentHashMap<>();
