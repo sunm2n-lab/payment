@@ -2,6 +2,7 @@ package com.sunm2n.pay.support;
 
 import java.time.Duration;
 import java.util.Map;
+import java.util.OptionalLong;
 import java.util.Set;
 import java.util.concurrent.BrokenBarrierException;
 import java.util.concurrent.ConcurrentHashMap;
@@ -10,6 +11,7 @@ import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * 동시성 테스트의 동기화 지점.
@@ -53,6 +55,15 @@ public class ConcurrencyGate {
    */
   public static final String PAYMENT_LOCK_ATTEMPT = "payment-lock-attempt";
 
+  /**
+   * {@code WalletLedgerRepository.save} <b>반환 직후</b> — 원장 INSERT 가 FK 검사로 wallet 행에 S 락을 잡은 시점
+   * (S4).
+   *
+   * <p>락을 잡은 <b>뒤에</b> 모으는 유일한 지점이다. S 락끼리는 공존하므로 참가자가 모두 도착할 수 있다. X 락을 먼저 잡는 본선에 쓰면 두 번째 참가자가
+   * 도착하지 못해 상한에 걸린다 — 실패 구현 전용이다.
+   */
+  public static final String LEDGER_INSERTED = "ledger-inserted";
+
   private static final Duration TIMEOUT = Duration.ofSeconds(10);
 
   private final Map<String, Point> gates = new ConcurrentHashMap<>();
@@ -89,6 +100,18 @@ public class ConcurrencyGate {
     throw new IllegalStateException("'" + name + "' 은 hold 로 무장되지 않았다");
   }
 
+  /**
+   * barrier 로 무장한 지점이 풀린 시각({@link System#nanoTime()}). 아직 풀리지 않았으면 비어 있다.
+   *
+   * <p>마지막 참가자가 도착해 barrier 가 열리는 순간 한 번 기록한다. 이 시각 뒤의 구간은 스레드 스케줄링·SQL 실행·예외 전달을 모두 포함한다.
+   */
+  public OptionalLong trippedAtNanos(String name) {
+    if (gates.get(name) instanceof Gate gate) {
+      return gate.trippedAtNanos();
+    }
+    throw new IllegalStateException("'" + name + "' 은 barrier 로 무장되지 않았다");
+  }
+
   /** 무장된 게이트라면 다른 참가자를 기다린다. 무장 전이거나 이미 통과한 스레드면 그냥 돌아간다. */
   public void pass(String name) {
     Point gate = gates.get(name);
@@ -120,10 +143,16 @@ public class ConcurrencyGate {
     private final String name;
     private final CyclicBarrier barrier;
     private final Set<Long> arrived = ConcurrentHashMap.newKeySet();
+    private final AtomicLong trippedAt = new AtomicLong();
 
     private Gate(String name, int parties) {
       this.name = name;
-      this.barrier = new CyclicBarrier(parties);
+      this.barrier = new CyclicBarrier(parties, () -> trippedAt.set(System.nanoTime()));
+    }
+
+    private OptionalLong trippedAtNanos() {
+      long at = trippedAt.get();
+      return at == 0 ? OptionalLong.empty() : OptionalLong.of(at);
     }
 
     @Override

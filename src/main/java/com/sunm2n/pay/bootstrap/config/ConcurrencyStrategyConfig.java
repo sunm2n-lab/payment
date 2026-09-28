@@ -14,6 +14,7 @@ import com.sunm2n.pay.payment.infrastructure.PaymentRepository;
 import com.sunm2n.pay.wallet.application.WalletService;
 import com.sunm2n.pay.wallet.application.balance.AtomicDecrementWalletBalanceUpdater;
 import com.sunm2n.pay.wallet.application.balance.GuardedDecrementWalletBalanceUpdater;
+import com.sunm2n.pay.wallet.application.balance.LedgerFirstWalletBalanceUpdater;
 import com.sunm2n.pay.wallet.application.balance.NaiveWalletBalanceUpdater;
 import com.sunm2n.pay.wallet.application.balance.OptimisticLockWalletBalanceUpdater;
 import com.sunm2n.pay.wallet.application.balance.PessimisticLockWalletBalanceUpdater;
@@ -151,6 +152,54 @@ public class ConcurrencyStrategyConfig {
         4,
         Duration.ofMillis(20),
         optimisticRetryMetrics,
+        RetryingPaymentConfirmer.Sleeper.real());
+  }
+
+  /** S4 실패 구현 — wallet 선행 잠금 없이 원장 INSERT 후 원자적 감산. FK 아래에서 S → X 승격 데드락을 만든다. */
+  @Bean
+  LedgerFirstWalletBalanceUpdater ledgerFirstWalletBalanceUpdater(
+      WalletRepository walletRepository,
+      WalletLedgerRepository walletLedgerRepository,
+      NaiveWalletBalanceUpdater naiveUpdater) {
+    return new LedgerFirstWalletBalanceUpdater(
+        walletRepository, walletLedgerRepository, naiveUpdater);
+  }
+
+  /**
+   * S4 재현 1 의 배선 — CAS 승인 + ledger-first 차감. S1 의 CAS 는 유지한다 (SCENARIO 162행). 결제가 서로 다르면 payment 락은
+   * 겹치지 않으므로 경쟁은 wallet 행에서만 일어난다.
+   */
+  @Bean
+  PaymentConfirmer ledgerFirstDebitConfirmer(
+      PaymentSupport support,
+      PaymentRepository paymentRepository,
+      LedgerFirstWalletBalanceUpdater ledgerFirstUpdater) {
+    return new CasPaymentConfirmer(support, paymentRepository, ledgerFirstUpdater);
+  }
+
+  @Bean
+  RetryMetrics deadlockRetryMetrics() {
+    return new RetryMetrics();
+  }
+
+  /**
+   * S4 재현 2 — 데드락 피해 트랜잭션 전체를 새 트랜잭션에서 재시도한다 (SCENARIO 169행). 조건은 1213 만이다.
+   *
+   * <p><b>실패 배선에만</b> 씌운다. 본선은 wallet 을 먼저 잠가 이 데드락을 예방하는데, 본선에 재시도를 씌우면 예방 여부가 재시도에 가려진다.
+   *
+   * <p>{@code maxAttempts = 3}: 참가자가 둘이면 순환은 한 번 생기고 피해자는 하나다. 피해자의 재시도는 승자가 X 락을 쥔 동안 INSERT 의 S
+   * 락에서 기다렸다가 승자가 커밋한 뒤 진행하므로 다시 순환을 만들지 않는다. 여유를 한 번 둔다.
+   */
+  @Bean
+  PaymentConfirmer retryingLedgerFirstDebitConfirmer(
+      @Qualifier("ledgerFirstDebitConfirmer") PaymentConfirmer ledgerFirstDebitConfirmer,
+      RetryMetrics deadlockRetryMetrics) {
+    return new RetryingPaymentConfirmer(
+        ledgerFirstDebitConfirmer,
+        RetryingPaymentConfirmer.DEADLOCK,
+        3,
+        Duration.ofMillis(20),
+        deadlockRetryMetrics,
         RetryingPaymentConfirmer.Sleeper.real());
   }
 

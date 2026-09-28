@@ -2,6 +2,7 @@ package com.sunm2n.pay.support;
 
 import com.sunm2n.pay.payment.infrastructure.PaymentRepository;
 import com.sunm2n.pay.wallet.infrastructure.VersionedWalletRepository;
+import com.sunm2n.pay.wallet.infrastructure.WalletLedgerRepository;
 import com.sunm2n.pay.wallet.infrastructure.WalletRepository;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.InvocationTargetException;
@@ -61,6 +62,15 @@ public class ConcurrencyGateConfig {
               Map.of(),
               // S2-a 도 "모두 같은 잔액을 읽은 시점" 으로 맞춘다. 여기서는 버전도 같이 읽는다.
               Map.of("findById", ConcurrencyGate.WALLET_READ));
+        }
+        if (bean instanceof WalletLedgerRepository) {
+          return gated(
+              bean,
+              WalletLedgerRepository.class,
+              gate::getObject,
+              Map.of(),
+              // IDENTITY 라 save 가 곧 INSERT 다. 반환 직후면 FK 검사의 wallet S 락을 이미 잡았다 (S4).
+              Map.of("save", ConcurrencyGate.LEDGER_INSERTED));
         }
         if (bean instanceof WalletRepository) {
           return gated(
