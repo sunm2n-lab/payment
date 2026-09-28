@@ -1,0 +1,10 @@
+# S4 FK 락 승격 데드락 관측용 (docs/phase1/S4.md 5절).
+#
+# innodb_print_all_deadlocks 는 모든 데드락을 에러 로그에 남긴다. SHOW ENGINE INNODB STATUS 는 마지막 한 건만 보여 준다.
+# 기본 verbosity 2 에서도 트랜잭션·락 상세는 stderr 로 직접 출력되지만, 제목("Transactions deadlock detected")과
+# 결론("WE ROLL BACK TRANSACTION")은 정보 수준이라 빠진다. 제목과 롤백 대상까지 온전히 기록하기 위해 3 으로 설정한다
+# (https://bugs.mysql.com/bug.php?id=112117).
+# 컨테이너를 재시작해야 적용된다. 실행 중에는 SET GLOBAL 로 같은 값을 줄 수 있다.
+[mysqld]
+innodb_print_all_deadlocks = ON
+log_error_verbosity = 3

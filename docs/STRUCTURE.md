@@ -29,7 +29,8 @@ com.sunm2n.pay
 │   ├── application          WalletService
 │   │   └── balance          WalletBalanceUpdater, NaiveWalletBalanceUpdater,
 │   │                        AtomicDecrementWalletBalanceUpdater, GuardedDecrementWalletBalanceUpdater,
-│   │                        OptimisticLockWalletBalanceUpdater, PessimisticLockWalletBalanceUpdater
+│   │                        OptimisticLockWalletBalanceUpdater, PessimisticLockWalletBalanceUpdater,
+│   │                        LedgerFirstWalletBalanceUpdater
 │   ├── domain               Wallet, VersionedWallet, WalletLedger, LedgerType, Amounts
 │   │   └── exception        WalletNotFoundException, InsufficientBalanceException, BalanceOverflowException
 │   └── infrastructure       WalletRepository, VersionedWalletRepository, WalletLedgerRepository
@@ -43,6 +44,7 @@ com.sunm2n.pay
 │   └── infrastructure       SettlementRepository
 ├── common
 │   ├── exception            DomainException
+│   ├── persistence          MySqlLockErrors
 │   └── web
 │       └── error            ErrorResponse
 └── bootstrap
@@ -101,9 +103,20 @@ grep -rn 'import com.sunm2n.pay.bootstrap' $B/payment $B/wallet $B/merchant $B/s
 | `payment.application.confirmation` | `RetryPolicyTest` | 재시도 데코레이터 전용, 컨테이너 없이 돈다 |
 | `wallet.application` | `WalletServiceTest` | 지갑 전용 |
 | `wallet.domain` | `AmountBoundaryTest` | `Amounts` 오버플로 경계. 결제 서비스도 쓰지만 검증 대상은 지갑 잔액 산술이다 |
-| `concurrency` | `DuplicateConfirmReproductionTest`, `DuplicateConfirmRegressionTest`, `WalletLostUpdateReproductionTest`, `WalletDecrementComparisonTest`, `WalletLockRegressionTest`, `OptimisticLockConcurrencyTest`, `LockContentionObservationTest`, `OverRefundReproductionTest`, `CancelLockRegressionTest` | S1·S2·S3 재현·비교·회귀·관측. 승인·취소 구현과 지갑 전략을 조합해 쓴다 |
-| `schema` | `IsolationLevelTest`, `SchemaConstraintTest` | 스키마 전제 |
+| `concurrency` | `DuplicateConfirmReproductionTest`, `DuplicateConfirmRegressionTest`, `WalletLostUpdateReproductionTest`, `WalletDecrementComparisonTest`, `WalletLockRegressionTest`, `OptimisticLockConcurrencyTest`, `LockContentionObservationTest`, `OverRefundReproductionTest`, `CancelLockRegressionTest`, `FkPromotionDeadlockReproductionTest`, `FkDeadlockRegressionTest`, `LockWaitTimeoutObservationTest` | S1~S4 재현·비교·회귀·관측. 승인·취소 구현과 지갑 전략을 조합해 쓴다 |
+| `schema` | `IsolationLevelTest`, `SchemaConstraintTest`, `V2SchemaContextTest` | 스키마 전제. 최신 스키마와 V2 스키마를 각각 지킨다 |
 | `support` | 베이스 클래스, 게이트, 러너, 시드, 불변식 | 공통 도구 |
+
+### 5.1 스키마 버전별 베이스 (S4)
+
+과거 실패 재현은 그 실험이 전제한 스키마 버전의 DB 에서 돈다 (SCENARIO 94행). 컨테이너는 하나(`MySqlTestContainer`)를 공유하고, 버전마다 데이터베이스를 따로 둔다.
+
+| 베이스 | DB | 쓰는 테스트 |
+|---|---|---|
+| `AbstractIntegrationTest` | 컨테이너 기본 DB, 전체 마이그레이션 | 본선 회귀·계약·서비스 테스트, S4 재현 |
+| `AbstractV2SchemaTest` | `payment_v2`, Flyway `target=2` | S1·S2·S2-a·S3 재현·비교 (`DuplicateConfirmReproductionTest`, `WalletLostUpdateReproductionTest`, `WalletDecrementComparisonTest`, `OptimisticLockConcurrencyTest`, `LockContentionObservationTest`, `OverRefundReproductionTest`), `V2SchemaContextTest` |
+
+두 베이스 모두 `AbstractDatabaseTest` 의 정리 규약을 쓴다. Spring 컨텍스트는 베이스마다 따로 뜬다. **새 테스트는 "어느 스키마를 전제로 쓴 실험인가" 로 베이스를 고른다** — 결과가 우연히 같아도 과거 스키마 전제 실험은 과거 베이스를 쓴다 (`docs/plan/S4.md` 3.1).
 
 ## 6. 과거 문서
 
