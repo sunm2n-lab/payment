@@ -18,7 +18,7 @@ public class RetryMetrics {
   private final AtomicLong exhausted = new AtomicLong();
   private final AtomicLong backoffNanos = new AtomicLong();
 
-  /** 낙관적 충돌로 트랜잭션이 롤백된 횟수. */
+  /** 재시도 조건에 맞는 실패(S2-a 낙관적 충돌, S4 데드락)로 트랜잭션이 롤백된 횟수. */
   public long conflicts() {
     return conflicts.get();
   }

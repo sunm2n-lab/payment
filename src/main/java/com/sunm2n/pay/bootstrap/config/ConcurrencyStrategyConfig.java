@@ -147,6 +147,7 @@ public class ConcurrencyStrategyConfig {
       RetryMetrics optimisticRetryMetrics) {
     return new RetryingPaymentConfirmer(
         optimisticDebitConfirmer,
+        RetryingPaymentConfirmer.OPTIMISTIC_CONFLICT,
         4,
         Duration.ofMillis(20),
         optimisticRetryMetrics,

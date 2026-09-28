@@ -3,16 +3,20 @@ package com.sunm2n.pay.payment.application.confirmation;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.sunm2n.pay.common.persistence.MySqlLockErrors;
 import com.sunm2n.pay.payment.domain.Payment;
 import com.sunm2n.pay.payment.domain.PaymentMethod;
 import com.sunm2n.pay.wallet.domain.exception.InsufficientBalanceException;
+import java.sql.SQLException;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Predicate;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.dao.CannotAcquireLockException;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 
 /**
@@ -102,9 +106,69 @@ class RetryPolicyTest {
     assertThat(metrics.exhausted()).isZero();
   }
 
+  @Test
+  @DisplayName(
+      "S4 - 원인 체인 안쪽의 1213 을 찾아 재시도한다 - Spring·Hibernate 가 몇 겹으로 감싸도 맨 안쪽은 SQLException 이다")
+  void retriesDeadlockNestedInTheCauseChain() {
+    CountingConfirmer delegate = CountingConfirmer.failingTimes(1, RetryPolicyTest::deadlock);
+
+    Payment confirmed =
+        retrying(delegate, RetryingPaymentConfirmer.DEADLOCK, MAX_ATTEMPTS)
+            .confirm(1L, "pk", "order", AMOUNT);
+
+    assertThat(confirmed).isNotNull();
+    assertThat(delegate.calls()).as("최초 호출 + 재시도 1회").isEqualTo(2);
+    assertThat(metrics.conflicts()).isEqualTo(1);
+    assertThat(metrics.retries()).isEqualTo(1);
+  }
+
+  @Test
+  @DisplayName("S4 - 락 대기 타임아웃(1205)은 재시도하지 않는다 - 호출 1회, 예외를 그대로 올려보낸다")
+  void doesNotRetryLockWaitTimeout() {
+    CountingConfirmer delegate = CountingConfirmer.throwing(RetryPolicyTest::lockWaitTimeout);
+
+    assertThatThrownBy(
+            () ->
+                retrying(delegate, RetryingPaymentConfirmer.DEADLOCK, MAX_ATTEMPTS)
+                    .confirm(1L, "pk", "order", AMOUNT))
+        .as("데드락과 같은 타입이어도 에러 코드로 구분한다")
+        .isInstanceOf(CannotAcquireLockException.class);
+
+    assertThat(delegate.calls()).isEqualTo(1);
+    assertThat(metrics.conflicts()).isZero();
+    assertThat(metrics.retries()).isZero();
+    assertThat(metrics.exhausted()).isZero();
+    assertThat(requestedDelays).isEmpty();
+  }
+
+  @Test
+  @DisplayName("조건은 서로 섞이지 않는다 - 데드락 조건은 낙관적 충돌을, 낙관적 조건은 데드락을 재시도하지 않는다")
+  void conditionsDoNotOverlap() {
+    CountingConfirmer optimistic = CountingConfirmer.throwing(RetryPolicyTest::conflict);
+    CountingConfirmer deadlocked = CountingConfirmer.throwing(RetryPolicyTest::deadlock);
+
+    assertThatThrownBy(
+            () ->
+                retrying(optimistic, RetryingPaymentConfirmer.DEADLOCK, MAX_ATTEMPTS)
+                    .confirm(1L, "pk", "order", AMOUNT))
+        .isInstanceOf(ObjectOptimisticLockingFailureException.class);
+    assertThatThrownBy(() -> retrying(deadlocked, MAX_ATTEMPTS).confirm(1L, "pk", "order", AMOUNT))
+        .isInstanceOf(CannotAcquireLockException.class);
+
+    assertThat(optimistic.calls()).isEqualTo(1);
+    assertThat(deadlocked.calls()).isEqualTo(1);
+    assertThat(metrics.retries()).isZero();
+  }
+
+  /** 기존 사례는 S2-a 배선과 같은 낙관적 충돌 조건으로 돈다. */
   private RetryingPaymentConfirmer retrying(PaymentConfirmer delegate, int maxAttempts) {
+    return retrying(delegate, RetryingPaymentConfirmer.OPTIMISTIC_CONFLICT, maxAttempts);
+  }
+
+  private RetryingPaymentConfirmer retrying(
+      PaymentConfirmer delegate, Predicate<RuntimeException> retryable, int maxAttempts) {
     return new RetryingPaymentConfirmer(
-        delegate, maxAttempts, BACKOFF, metrics, requestedDelays::add);
+        delegate, retryable, maxAttempts, BACKOFF, metrics, requestedDelays::add);
   }
 
   /** 호출 횟수를 세고 정해진 횟수만큼 예외를 던지는 delegate. */
@@ -121,7 +185,12 @@ class RetryPolicyTest {
     }
 
     private static CountingConfirmer failingTimes(int times) {
-      return new CountingConfirmer(times, RetryPolicyTest::conflict);
+      return failingTimes(times, RetryPolicyTest::conflict);
+    }
+
+    private static CountingConfirmer failingTimes(
+        int times, java.util.function.Supplier<RuntimeException> exception) {
+      return new CountingConfirmer(times, exception);
     }
 
     private static CountingConfirmer alwaysFailing() {
@@ -148,5 +217,21 @@ class RetryPolicyTest {
 
   private static ObjectOptimisticLockingFailureException conflict() {
     return new ObjectOptimisticLockingFailureException("wallet", 1L);
+  }
+
+  /** JPA 경로에서 관찰한 모양 — Spring 예외 → Hibernate 예외 → 드라이버의 SQLException. */
+  private static CannotAcquireLockException deadlock() {
+    return lockFailure("Deadlock found when trying to get lock", "40001", MySqlLockErrors.DEADLOCK);
+  }
+
+  private static CannotAcquireLockException lockWaitTimeout() {
+    return lockFailure("Lock wait timeout exceeded", "HY000", MySqlLockErrors.LOCK_WAIT_TIMEOUT);
+  }
+
+  private static CannotAcquireLockException lockFailure(
+      String message, String sqlState, int errorCode) {
+    SQLException driver = new SQLException(message, sqlState, errorCode);
+    return new CannotAcquireLockException(
+        "could not execute statement", new RuntimeException("hibernate", driver));
   }
 }

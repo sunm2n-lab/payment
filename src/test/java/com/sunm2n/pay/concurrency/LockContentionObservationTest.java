@@ -81,7 +81,12 @@ class LockContentionObservationTest extends AbstractV2SchemaTest {
     // 재시도 데코레이터는 트랜잭션을 열지 않으므로 손으로 조립해도 된다. 백오프만 0 으로 바꿔 같은 delegate 를 감싼다.
     PaymentConfirmer withoutBackoff =
         new RetryingPaymentConfirmer(
-            optimisticDebitConfirmer, 4, Duration.ZERO, retryMetrics, duration -> {});
+            optimisticDebitConfirmer,
+            RetryingPaymentConfirmer.OPTIMISTIC_CONFLICT,
+            4,
+            Duration.ZERO,
+            retryMetrics,
+            duration -> {});
 
     List<RoundStats> optimistic = measure("낙관적 락 (백오프 20ms)", optimisticConfirmer);
     List<RoundStats> noBackoff = measure("낙관적 락 (백오프 0)", withoutBackoff);
