@@ -7,7 +7,7 @@ import com.sunm2n.pay.payment.application.PaymentService;
 import com.sunm2n.pay.payment.application.confirmation.PaymentConfirmer;
 import com.sunm2n.pay.payment.domain.Payment;
 import com.sunm2n.pay.payment.domain.PaymentMethod;
-import com.sunm2n.pay.support.AbstractIntegrationTest;
+import com.sunm2n.pay.support.AbstractV2SchemaTest;
 import com.sunm2n.pay.support.ConcurrencyGate;
 import com.sunm2n.pay.support.ConcurrentRunner;
 import com.sunm2n.pay.support.Seeds;
@@ -33,7 +33,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
  * <p>비교의 값은 "고쳐졌다"가 아니라 <b>무엇이 고쳐지고 무엇이 안 고쳐졌는가</b>에 있다. 원자적 감산은 차감 유실을 없애서 잔액과 원장 합계를 일치시키지만, 검사와
  * 감산이 따로라 잔액이 음수가 된다.
  */
-class WalletDecrementComparisonTest extends AbstractIntegrationTest {
+class WalletDecrementComparisonTest extends AbstractV2SchemaTest {
 
   private static final int WORKERS = 4;
   private static final String ORDER_ID = "order-s2";

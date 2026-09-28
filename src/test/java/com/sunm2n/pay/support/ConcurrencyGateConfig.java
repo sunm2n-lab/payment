@@ -27,9 +27,9 @@ import org.springframework.context.annotation.Bean;
  * ConcurrencyGate#PAYMENT_READ} 같은 이름으로 한곳에 모여 있어야, S2~S10 이 지점을 늘려 갈 때 흩어지지 않는다. (Mockito 자체는 스텁을
  * 미리 걸어 두고 여러 스레드가 호출하는 방식을 지원한다. 안전하지 않은 것은 호출 중에 스텁을 다시 걸거나 검증하는 쪽이다.)
  *
- * <p>{@code @TestConfiguration} 이라 컴포넌트 스캔에 걸리지 않고 {@link AbstractIntegrationTest} 가 명시적으로 import
- * 한다. 빈 재정의는 컨텍스트 캐시 키의 일부라 어느 테스트가 무엇을 재정의했느냐에 따라 컨텍스트가 갈리는데, 이 설정은 모든 통합 테스트가 공통으로 얹고 무장 전에는
- * no-op 이므로 그런 갈래를 만들지 않는다.
+ * <p>{@code @TestConfiguration} 이라 컴포넌트 스캔에 걸리지 않고 {@link AbstractDatabaseTest} 가 명시적으로 import 한다.
+ * 빈 재정의는 컨텍스트 캐시 키의 일부라 어느 테스트가 무엇을 재정의했느냐에 따라 컨텍스트가 갈리는데, 이 설정은 모든 통합 테스트가 공통으로 얹고 무장 전에는 no-op
+ * 이므로 그런 갈래를 만들지 않는다.
  */
 @TestConfiguration
 public class ConcurrencyGateConfig {

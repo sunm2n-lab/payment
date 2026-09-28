@@ -8,7 +8,7 @@ import com.sunm2n.pay.payment.application.confirmation.RetryMetrics;
 import com.sunm2n.pay.payment.application.confirmation.RetryingPaymentConfirmer;
 import com.sunm2n.pay.payment.domain.Payment;
 import com.sunm2n.pay.payment.domain.PaymentMethod;
-import com.sunm2n.pay.support.AbstractIntegrationTest;
+import com.sunm2n.pay.support.AbstractV2SchemaTest;
 import com.sunm2n.pay.support.ConcurrencyGate;
 import com.sunm2n.pay.support.ConcurrentRunner;
 import com.sunm2n.pay.wallet.application.WalletService;
@@ -39,7 +39,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
  * sleep 이 길다" 를 관측하고 끝난다. 백오프 합은 <b>설정값의 합</b>이고 워커별로 병렬로 겹치므로, 총 소요에서 빼는 식으로 쓰지 않는다 - 백오프 0 조건의 총
  * 소요와 견줘서 본다.
  */
-class LockContentionObservationTest extends AbstractIntegrationTest {
+class LockContentionObservationTest extends AbstractV2SchemaTest {
 
   private static final int ROUNDS = 5;
   private static final int WORKERS = 4;

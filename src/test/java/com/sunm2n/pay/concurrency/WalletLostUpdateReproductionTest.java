@@ -7,7 +7,7 @@ import com.sunm2n.pay.payment.application.PaymentService;
 import com.sunm2n.pay.payment.application.confirmation.PaymentConfirmer;
 import com.sunm2n.pay.payment.domain.Payment;
 import com.sunm2n.pay.payment.domain.PaymentMethod;
-import com.sunm2n.pay.support.AbstractIntegrationTest;
+import com.sunm2n.pay.support.AbstractV2SchemaTest;
 import com.sunm2n.pay.support.ConcurrencyGate;
 import com.sunm2n.pay.support.ConcurrentRunner;
 import com.sunm2n.pay.support.Seeds;
@@ -35,7 +35,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
  *
  * <p><b>이 테스트는 결함이 재현될 때 green 이다.</b> 본선이 비관적 락으로 바뀐 뒤에도 naive 전략을 고른 이 빈들은 계속 이 결과를 낸다.
  */
-class WalletLostUpdateReproductionTest extends AbstractIntegrationTest {
+class WalletLostUpdateReproductionTest extends AbstractV2SchemaTest {
 
   private static final int WORKERS = 4;
   private static final String ORDER_ID = "order-s2";

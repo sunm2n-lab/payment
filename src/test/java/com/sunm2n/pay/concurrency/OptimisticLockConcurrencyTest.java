@@ -7,7 +7,7 @@ import com.sunm2n.pay.payment.application.confirmation.PaymentConfirmer;
 import com.sunm2n.pay.payment.application.confirmation.RetryMetrics;
 import com.sunm2n.pay.payment.domain.Payment;
 import com.sunm2n.pay.payment.domain.PaymentMethod;
-import com.sunm2n.pay.support.AbstractIntegrationTest;
+import com.sunm2n.pay.support.AbstractV2SchemaTest;
 import com.sunm2n.pay.support.ConcurrencyGate;
 import com.sunm2n.pay.support.ConcurrentRunner;
 import com.sunm2n.pay.support.Seeds;
@@ -35,7 +35,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
  *
  * <p>충돌 <b>하한</b>은 결정적이다. 1차 시도에서 넷이 같은 버전을 읽으므로 커밋에 성공하는 것은 하나뿐이고, 나머지 3건은 반드시 충돌한다.
  */
-class OptimisticLockConcurrencyTest extends AbstractIntegrationTest {
+class OptimisticLockConcurrencyTest extends AbstractV2SchemaTest {
 
   private static final int WORKERS = 4;
   private static final String ORDER_ID = "order-s2a";

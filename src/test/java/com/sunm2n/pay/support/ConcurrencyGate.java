@@ -100,8 +100,8 @@ public class ConcurrencyGate {
   /**
    * 모든 게이트를 해제한다.
    *
-   * <p>테스트가 게이트를 무장한 뒤 실행 전에 실패할 수도 있으므로, 해제는 실행 헬퍼가 아니라 {@link AbstractIntegrationTest} 의 매 테스트 전
-   * 정리 규약이 담당한다. 어떻게 끝났든 다음 테스트로 새지 않는다.
+   * <p>테스트가 게이트를 무장한 뒤 실행 전에 실패할 수도 있으므로, 해제는 실행 헬퍼가 아니라 {@link AbstractDatabaseTest} 의 매 테스트 전 정리
+   * 규약이 담당한다. 어떻게 끝났든 다음 테스트로 새지 않는다.
    */
   public void reset() {
     gates.values().forEach(Point::release);

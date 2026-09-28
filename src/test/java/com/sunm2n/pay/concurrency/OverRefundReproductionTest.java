@@ -8,7 +8,7 @@ import com.sunm2n.pay.payment.application.cancellation.PaymentCanceller;
 import com.sunm2n.pay.payment.domain.Payment;
 import com.sunm2n.pay.payment.domain.PaymentMethod;
 import com.sunm2n.pay.payment.domain.PaymentStatus;
-import com.sunm2n.pay.support.AbstractIntegrationTest;
+import com.sunm2n.pay.support.AbstractV2SchemaTest;
 import com.sunm2n.pay.support.ConcurrencyGate;
 import com.sunm2n.pay.support.ConcurrentRunner;
 import com.sunm2n.pay.support.Seeds;
@@ -35,7 +35,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
  *
  * <p><b>이 테스트는 결함이 재현될 때 green 이다.</b> 본선이 바뀐 뒤에도 naive 취소를 고른 이 빈은 계속 이 결과를 낸다.
  */
-class OverRefundReproductionTest extends AbstractIntegrationTest {
+class OverRefundReproductionTest extends AbstractV2SchemaTest {
 
   private static final long AMOUNT = 10_000L;
   private static final long PARTIAL_CANCEL = 7_000L;
