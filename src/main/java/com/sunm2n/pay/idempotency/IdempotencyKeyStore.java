@@ -18,6 +18,15 @@ public interface IdempotencyKeyStore {
   Optional<IdempotencyRecord> find(Long merchantId, String operation, String idempotencyKey);
 
   /**
+   * <b>2차 실패 배선 전용.</b> {@code FOR UPDATE} 로 찾는다. 활성 트랜잭션 안에서만 호출할 수 있다.
+   *
+   * <p>RR 에서 없는 키를 잠그며 찾으면 검색 인덱스의 갭에 X 갭락이 걸린다. 갭락끼리는 공존하므로 두 요청이 모두 "없음" 을 보고 진행하고, 각자의 INSERT 가
+   * 상대 갭락에 막혀 데드락이 된다 (SCENARIO S5 "관찰 3", 181행).
+   */
+  Optional<IdempotencyRecord> findForUpdate(
+      Long merchantId, String operation, String idempotencyKey);
+
+  /**
    * <b>1·2차 실패 배선 전용.</b> 처리가 끝난 뒤 키를 {@code COMPLETED} 로 남긴다. 응답은 저장하지 않는다.
    *
    * <p>"조회 → 처리 → 키 저장" 의 마지막 단계다. 본선은 이 순서를 뒤집어 키를 먼저 쓴다.

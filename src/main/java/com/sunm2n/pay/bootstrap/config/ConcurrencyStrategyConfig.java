@@ -4,6 +4,7 @@ import com.sunm2n.pay.idempotency.IdempotencyKeyStore;
 import com.sunm2n.pay.payment.application.PaymentService;
 import com.sunm2n.pay.payment.application.PaymentSupport;
 import com.sunm2n.pay.payment.application.cancellation.CheckThenInsertIdempotentCanceller;
+import com.sunm2n.pay.payment.application.cancellation.LockingLookupIdempotentCanceller;
 import com.sunm2n.pay.payment.application.cancellation.NaivePaymentCanceller;
 import com.sunm2n.pay.payment.application.cancellation.PaymentCanceller;
 import com.sunm2n.pay.payment.application.cancellation.PessimisticLockPaymentCanceller;
@@ -272,6 +273,15 @@ public class ConcurrencyStrategyConfig {
       @Qualifier("pessimisticPaymentCanceller") PaymentCanceller canceller,
       PaymentSupport support) {
     return new CheckThenInsertIdempotentCanceller(store, canceller, support);
+  }
+
+  /** S5 2차 재현용 — 키 {@code FOR UPDATE} 조회. 없는 키의 갭락이 공존해 INSERT 끼리 데드락을 만든다. 취소는 1차와 같이 본선이다. */
+  @Bean
+  LockingLookupIdempotentCanceller lockingLookupCanceller(
+      IdempotencyKeyStore store,
+      @Qualifier("pessimisticPaymentCanceller") PaymentCanceller canceller,
+      PaymentSupport support) {
+    return new LockingLookupIdempotentCanceller(store, canceller, support);
   }
 
   /** 충전 경쟁 재현용. 본선이 바뀌어도 이 빈은 Phase 0 의 충전 경로를 유지한다. */

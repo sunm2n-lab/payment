@@ -46,6 +46,16 @@ public class JdbcIdempotencyKeyStore implements IdempotencyKeyStore {
   }
 
   @Override
+  public Optional<IdempotencyRecord> findForUpdate(
+      Long merchantId, String operation, String idempotencyKey) {
+    requireActiveTransaction("findForUpdate");
+    return jdbcTemplate
+        .query(SELECT + " FOR UPDATE", ROW_MAPPER, merchantId, operation, idempotencyKey)
+        .stream()
+        .findFirst();
+  }
+
+  @Override
   public void record(Long merchantId, String operation, String idempotencyKey, String requestHash) {
     requireActiveTransaction("record");
     jdbcTemplate.update(

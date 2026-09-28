@@ -96,8 +96,13 @@ public class ConcurrencyGateConfig {
               IdempotencyKeyStore.class,
               gate::getObject,
               Map.of(),
-              // 1차의 잠그지 않는 조회. 반환 직후면 모두 "키 없음" 을 본 뒤다.
-              Map.of("find", ConcurrencyGate.KEY_LOOKED_UP));
+              // 1차의 잠그지 않는 조회와 2차의 FOR UPDATE 조회. 반환 직후면 모두 "키 없음" 을 본 뒤다.
+              // 2차는 없는 키의 X 갭락을 잡은 뒤지만 갭락끼리 공존하므로 모인다.
+              Map.of(
+                  "find",
+                  ConcurrencyGate.KEY_LOOKED_UP,
+                  "findForUpdate",
+                  ConcurrencyGate.KEY_LOOKED_UP));
         }
         return bean;
       }
