@@ -1,7 +1,9 @@
 package com.sunm2n.pay.bootstrap.config;
 
+import com.sunm2n.pay.idempotency.IdempotencyKeyStore;
 import com.sunm2n.pay.payment.application.PaymentService;
 import com.sunm2n.pay.payment.application.PaymentSupport;
+import com.sunm2n.pay.payment.application.cancellation.CheckThenInsertIdempotentCanceller;
 import com.sunm2n.pay.payment.application.cancellation.NaivePaymentCanceller;
 import com.sunm2n.pay.payment.application.cancellation.PaymentCanceller;
 import com.sunm2n.pay.payment.application.cancellation.PessimisticLockPaymentCanceller;
@@ -258,6 +260,18 @@ public class ConcurrencyStrategyConfig {
       PaymentRepository paymentRepository,
       PessimisticLockWalletBalanceUpdater pessimisticUpdater) {
     return new PessimisticLockPaymentCanceller(support, paymentRepository, pessimisticUpdater);
+  }
+
+  /**
+   * S5 1차 재현용 — check-then-insert. 취소는 본선({@link #pessimisticPaymentCanceller})을 그대로 쓴다. 금액 상한은
+   * 지켜지는데 같은 요청이 두 번 실행된다는 것이 1차의 요점이다.
+   */
+  @Bean
+  CheckThenInsertIdempotentCanceller checkThenInsertCanceller(
+      IdempotencyKeyStore store,
+      @Qualifier("pessimisticPaymentCanceller") PaymentCanceller canceller,
+      PaymentSupport support) {
+    return new CheckThenInsertIdempotentCanceller(store, canceller, support);
   }
 
   /** 충전 경쟁 재현용. 본선이 바뀌어도 이 빈은 Phase 0 의 충전 경로를 유지한다. */

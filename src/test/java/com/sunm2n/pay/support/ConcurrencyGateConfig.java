@@ -1,5 +1,6 @@
 package com.sunm2n.pay.support;
 
+import com.sunm2n.pay.idempotency.IdempotencyKeyStore;
 import com.sunm2n.pay.payment.infrastructure.PaymentRepository;
 import com.sunm2n.pay.wallet.infrastructure.VersionedWalletRepository;
 import com.sunm2n.pay.wallet.infrastructure.WalletLedgerRepository;
@@ -88,6 +89,15 @@ public class ConcurrencyGateConfig {
                   ConcurrencyGate.WALLET_READ,
                   "findBalanceById",
                   ConcurrencyGate.WALLET_READ));
+        }
+        if (bean instanceof IdempotencyKeyStore) {
+          return gated(
+              bean,
+              IdempotencyKeyStore.class,
+              gate::getObject,
+              Map.of(),
+              // 1차의 잠그지 않는 조회. 반환 직후면 모두 "키 없음" 을 본 뒤다.
+              Map.of("find", ConcurrencyGate.KEY_LOOKED_UP));
         }
         return bean;
       }
