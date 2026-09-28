@@ -33,4 +33,16 @@ class V2SchemaContextTest extends AbstractV2SchemaTest {
 
     assertThat(version).isEqualTo("2");
   }
+
+  @Test
+  @DisplayName("FK 가 하나도 없다 - 원장 INSERT 의 FK 검사 락이 S1~S3 재현에 섞이지 않아야 한다")
+  void noForeignKeys() {
+    Integer count =
+        jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM information_schema.table_constraints"
+                + " WHERE constraint_schema = DATABASE() AND constraint_type = 'FOREIGN KEY'",
+            Integer.class);
+
+    assertThat(count).isZero();
+  }
 }
