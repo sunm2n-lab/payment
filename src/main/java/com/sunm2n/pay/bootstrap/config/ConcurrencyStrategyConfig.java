@@ -1,6 +1,7 @@
 package com.sunm2n.pay.bootstrap.config;
 
 import com.sunm2n.pay.idempotency.IdempotencyKeyStore;
+import com.sunm2n.pay.payment.application.IdempotentCancelCoordinator;
 import com.sunm2n.pay.payment.application.PaymentService;
 import com.sunm2n.pay.payment.application.PaymentSupport;
 import com.sunm2n.pay.payment.application.cancellation.CheckThenInsertIdempotentCanceller;
@@ -282,6 +283,15 @@ public class ConcurrencyStrategyConfig {
       @Qualifier("pessimisticPaymentCanceller") PaymentCanceller canceller,
       PaymentSupport support) {
     return new LockingLookupIdempotentCanceller(store, canceller, support);
+  }
+
+  /**
+   * S5 본선 취소 조율자. {@code PaymentController} 가 부른다. {@link PaymentService#cancel} 에 위임하므로 취소 전략은
+   * {@link #pessimisticPaymentCanceller} 그대로다.
+   */
+  @Bean
+  IdempotentCancelCoordinator idempotentCancelCoordinator(PaymentService paymentService) {
+    return new IdempotentCancelCoordinator(paymentService);
   }
 
   /** 충전 경쟁 재현용. 본선이 바뀌어도 이 빈은 Phase 0 의 충전 경로를 유지한다. */
