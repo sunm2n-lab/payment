@@ -7,11 +7,15 @@ import java.util.function.Predicate;
 import org.springframework.dao.OptimisticLockingFailureException;
 
 /**
- * 낙관적 충돌을 트랜잭션 <b>바깥</b>에서 재시도하는 데코레이터.
+ * 트랜잭션 전체를 롤백시킨 실패를 트랜잭션 <b>바깥</b>에서 재시도하는 데코레이터. S2-a 의 낙관적 충돌과 S4 의 데드락에 쓴다.
  *
- * <pre>RetryingPaymentConfirmer (트랜잭션 없음)  →  optimisticDebitConfirmer (@Transactional)</pre>
+ * <pre>
+ * RetryingPaymentConfirmer (트랜잭션 없음)  →  optimisticDebitConfirmer   (@Transactional)   S2-a
+ * RetryingPaymentConfirmer (트랜잭션 없음)  →  ledgerFirstDebitConfirmer  (@Transactional)   S4
+ * </pre>
  *
- * <p>충돌은 flush/commit 에서 터지고 트랜잭션 전체가 롤백된다 (SCENARIO 97행). 전략은 confirmer 의 트랜잭션 <b>안</b>에 있으므로 재시도는
+ * <p>실패가 터지는 지점은 다르다. 낙관적 충돌은 flush/commit 의 버전 검사에서(SCENARIO 97행), 데드락은 락을 기다리던 문장을 실행하는 순간(S4
+ * 재현에서는 {@code UPDATE wallet}) 터진다. 어느 쪽이든 트랜잭션 전체가 롤백되고, 전략은 confirmer 의 트랜잭션 <b>안</b>에 있으므로 재시도는
  * confirmer 를 감싸야 한다. 이 클래스에 {@code @Transactional} 을 붙이면 재시도가 이미 롤백이 예정된 같은 트랜잭션 안에서 돌아 아무 의미가 없다.
  *
  * <p><b>S1 의 트랜잭션 경계 결정이 여기서 값을 한다.</b> 롤백되면 CAS 의 {@code IN_PROGRESS} 전이도 함께 취소되므로(SCENARIO 127행),
@@ -76,7 +80,7 @@ public class RetryingPaymentConfirmer implements PaymentConfirmer {
         }
         metrics.recordConflict();
         if (attempt >= maxAttempts) {
-          // 새 에러 코드를 만들지 않는다. 본선이 아니므로 API 응답 규약을 늘리지 않고, 마지막 충돌을 그대로 올려보낸다.
+          // 새 에러 코드를 만들지 않는다. 본선이 아니므로 API 응답 규약을 늘리지 않고, 마지막 실패를 그대로 올려보낸다.
           metrics.recordExhausted();
           throw e;
         }
