@@ -145,9 +145,87 @@ class RoutingContractApiTest extends AbstractApiTest {
     }
   }
 
+  /**
+   * S6 의 주문 기반 경로 ({@code docs/plan/S6.md} 4.1). {@code GET /{paymentKey}} 는 세그먼트가 하나, {@code POST
+   * /{paymentKey}/cancel} 은 둘이라 {@code /orders/{orderId}}, {@code /orders/{orderId}/cancel} 과 겹치지
+   * 않는다. 세그먼트 수가 같은 {@code /orders}, {@code /orders/cancel} 은 기존 매핑이 받는다.
+   */
+  @Nested
+  @DisplayName("주문 기반 경로 - 기존 매핑과 겹치지 않는다")
+  class OrderRoutes {
+
+    @Test
+    @DisplayName("GET /v1/payments/orders 는 GET /{paymentKey} 가 받는다 - paymentKey=orders 로 404")
+    void ordersWithoutIdIsPaymentKey() throws Exception {
+      perform(get("/v1/payments/orders"), KEY)
+          .andExpect(status().isNotFound())
+          .andExpect(jsonPath("$.message").value(Matchers.containsString("paymentKey=orders")));
+    }
+
+    @Test
+    @DisplayName(
+        "POST /v1/payments/orders/cancel 은 POST /{paymentKey}/cancel 이 받는다 - paymentKey=orders 로 404")
+    void ordersCancelWithoutIdIsPaymentKeyCancel() throws Exception {
+      perform(jsonBody(post("/v1/payments/orders/cancel"), "{\"cancelAmount\":1000}"), KEY)
+          .andExpect(status().isNotFound())
+          .andExpect(jsonPath("$.message").value(Matchers.containsString("paymentKey=orders")));
+    }
+
+    @Test
+    @DisplayName("GET /v1/payments/orders/cancel 은 주문 조회다 - orderId=cancel(6자) 로 404")
+    void getOrdersCancelIsOrderLookup() throws Exception {
+      perform(get("/v1/payments/orders/cancel"), KEY)
+          .andExpect(status().isNotFound())
+          .andExpect(jsonPath("$.message").value(Matchers.containsString("orderId=cancel")));
+    }
+
+    @Test
+    @DisplayName("형식 밖의 주문 id, 키 없음 → 인증이 먼저 401")
+    void authBeforeOrderIdRule() throws Exception {
+      perform(get("/v1/payments/orders/abcde"), null)
+          .andExpect(status().isUnauthorized())
+          .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+    }
+
+    @Test
+    @DisplayName("본문 검증이 주문 id 형식보다 먼저다 - 인자 해석 단계에서 판정된다")
+    void bodyBeforeOrderIdRule() throws Exception {
+      perform(jsonBody(post("/v1/payments/orders/abcde/cancel"), "{\"cancelAmount\":0}"), KEY)
+          .andExpect(status().isBadRequest())
+          .andExpect(jsonPath("$.message").value(Matchers.startsWith("cancelAmount")));
+    }
+
+    @Test
+    @DisplayName("주문 id 형식이 멱등키 형식보다 먼저다")
+    void orderIdRuleBeforeIdempotencyKey() throws Exception {
+      perform(
+              jsonBody(post("/v1/payments/orders/abcde/cancel"), "{\"cancelAmount\":1000}")
+                  .header("Idempotency-Key", "a,b"),
+              KEY)
+          .andExpect(status().isBadRequest())
+          .andExpect(jsonPath("$.message").value(Matchers.startsWith("orderId")));
+    }
+
+    @Test
+    @DisplayName("PUT /v1/payments/orders/order-1 → 405, Allow = {GET}")
+    void putOnOrder() throws Exception {
+      MvcResult result =
+          perform(put("/v1/payments/orders/order-1"), KEY)
+              .andExpect(status().isMethodNotAllowed())
+              .andReturn();
+
+      assertThat(allow(result)).containsExactly("GET");
+    }
+  }
+
   private ResultActions perform(MockHttpServletRequestBuilder builder, String apiKey)
       throws Exception {
     return mockMvc.perform(apiKey == null ? builder : builder.header(API_KEY_HEADER, apiKey));
+  }
+
+  private static MockHttpServletRequestBuilder jsonBody(
+      MockHttpServletRequestBuilder builder, String body) {
+    return builder.contentType(MediaType.APPLICATION_JSON).content(body);
   }
 
   private static MockHttpServletRequestBuilder textBody(MockHttpServletRequestBuilder builder) {

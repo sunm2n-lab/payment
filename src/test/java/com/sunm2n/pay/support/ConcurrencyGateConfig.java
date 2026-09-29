@@ -53,7 +53,12 @@ public class ConcurrencyGateConfig {
               gate::getObject,
               // 잠그며 읽는 조회는 호출 직전에만 건다. findOwnershipByPaymentKey 는 상태를 읽지 않으므로 지점이 아니다.
               Map.of("findByIdForUpdate", ConcurrencyGate.PAYMENT_LOCK_ATTEMPT),
-              Map.of("findByPaymentKey", ConcurrencyGate.PAYMENT_READ));
+              // 주문 기반 잠금 읽기는 반환 직후다. hold 전용이라 한 스레드만 붙잡고 나머지는 지나간다 (S6).
+              Map.of(
+                  "findByPaymentKey",
+                  ConcurrencyGate.PAYMENT_READ,
+                  "findByMerchantIdAndOrderIdForUpdate",
+                  ConcurrencyGate.ORDER_LOCKED));
         }
         if (bean instanceof VersionedWalletRepository) {
           return gated(

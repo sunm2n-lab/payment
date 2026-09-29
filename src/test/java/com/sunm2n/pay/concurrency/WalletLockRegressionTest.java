@@ -14,7 +14,9 @@ import com.sunm2n.pay.wallet.application.WalletService;
 import com.sunm2n.pay.wallet.domain.exception.InsufficientBalanceException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Queue;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.BeforeEach;
@@ -41,6 +43,13 @@ class WalletLockRegressionTest extends AbstractIntegrationTest {
   private static final int WORKERS = 4;
   private static final int SAME_PAYMENT_WORKERS = 5;
   private static final String ORDER_ID = "order-s2b";
+
+  /**
+   * 결제마다 다른 주문 id. 실험이 보려는 것(지갑 경합, FK 락)과 주문 id 는 무관하지만, S6 의 {@code (merchant_id, order_id)}
+   * unique 이후로는 같은 가맹점이 같은 주문으로 결제를 여러 개 만들 수 없다 ({@code docs/plan/S6.md} 1.1).
+   */
+  private final Map<String, String> orderIds = new ConcurrentHashMap<>();
+
   private static final long AMOUNT = 3_000L;
   private static final long INITIAL_BALANCE = 10_000L;
   private static final long CHARGE_AMOUNT = 5_000L;
@@ -63,9 +72,7 @@ class WalletLockRegressionTest extends AbstractIntegrationTest {
 
     concurrencyGate.arm(ConcurrencyGate.PAYMENT_READ, WORKERS);
     ConcurrentRunner.Results<Payment> results =
-        ConcurrentRunner.run(
-            WORKERS,
-            () -> paymentService.confirm(merchantId, paymentKeys.poll(), ORDER_ID, AMOUNT));
+        ConcurrentRunner.run(WORKERS, () -> confirm(paymentKeys.poll()));
 
     assertThat(results.successCount()).isEqualTo(3);
     assertThat(results.failuresOf(InsufficientBalanceException.class))
@@ -99,7 +106,7 @@ class WalletLockRegressionTest extends AbstractIntegrationTest {
             () ->
                 turn.getAndIncrement() == 0
                     ? walletService.charge(Seeds.MEMBER_ID_1, CHARGE_AMOUNT)
-                    : paymentService.confirm(merchantId, paymentKey, ORDER_ID, AMOUNT));
+                    : confirm(paymentKey));
 
     assertThat(results.failures()).isEmpty();
     assertThat(results.successCount()).isEqualTo(2);
@@ -121,9 +128,7 @@ class WalletLockRegressionTest extends AbstractIntegrationTest {
 
     concurrencyGate.arm(ConcurrencyGate.PAYMENT_READ, SAME_PAYMENT_WORKERS);
     ConcurrentRunner.Results<Payment> results =
-        ConcurrentRunner.run(
-            SAME_PAYMENT_WORKERS,
-            () -> paymentService.confirm(merchantId, paymentKey, ORDER_ID, AMOUNT));
+        ConcurrentRunner.run(SAME_PAYMENT_WORKERS, () -> confirm(paymentKey));
 
     assertThat(results.successCount()).as("지갑을 잠그게 됐어도 S1 의 판정은 그대로다").isEqualTo(1);
     assertThat(results.failuresOf(InvalidPaymentStatusException.class))
@@ -142,12 +147,19 @@ class WalletLockRegressionTest extends AbstractIntegrationTest {
   private List<String> createPayments(int count) {
     List<String> paymentKeys = new ArrayList<>(count);
     for (int i = 0; i < count; i++) {
-      paymentKeys.add(
+      String orderId = ORDER_ID + "-" + (orderIds.size() + 1);
+      String paymentKey =
           paymentService
-              .create(merchantId, ORDER_ID, AMOUNT, PaymentMethod.MONEY, Seeds.MEMBER_ID_1)
-              .getPaymentKey());
+              .create(merchantId, orderId, AMOUNT, PaymentMethod.MONEY, Seeds.MEMBER_ID_1)
+              .getPaymentKey();
+      orderIds.put(paymentKey, orderId);
+      paymentKeys.add(paymentKey);
     }
     return paymentKeys;
+  }
+
+  private Payment confirm(String paymentKey) {
+    return paymentService.confirm(merchantId, paymentKey, orderIds.get(paymentKey), AMOUNT);
   }
 
   private void assertApprovedWithTimestamp(int expected) {

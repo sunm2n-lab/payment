@@ -57,6 +57,27 @@ class LatestSchemaContextTest extends AbstractIntegrationTest {
     assertThat(IdempotencyKeySchema.keyCollation(jdbcTemplate)).isEqualTo("ascii_bin");
   }
 
+  @Test
+  @DisplayName("payment 에는 (merchant_id, order_id) 복합 unique 가 있고 단일 인덱스는 없다 - V7 이 교체했다")
+  void paymentOrderIsUnique() {
+    assertThat(PaymentSchema.nonUniqueOf(jdbcTemplate, "uk_payment_merchant_order")).isFalse();
+    assertThat(PaymentSchema.indexNames(jdbcTemplate)).doesNotContain("idx_payment_merchant_id");
+    assertThat(
+            jdbcTemplate.queryForList(
+                "SELECT column_name FROM information_schema.statistics"
+                    + " WHERE table_schema = DATABASE() AND table_name = 'payment'"
+                    + " AND index_name = 'uk_payment_merchant_order' ORDER BY seq_in_index",
+                String.class))
+        .as("선두 컬럼이 merchant_id - 가맹점 검색도 이 인덱스가 받는다")
+        .containsExactly("merchant_id", "order_id");
+  }
+
+  @Test
+  @DisplayName("order_id 는 ascii_bin 이다 - unique 가 대소문자만 다른 주문을 같은 주문으로 막지 않는다")
+  void orderIdIsCaseSensitive() {
+    assertThat(PaymentSchema.orderIdCollation(jdbcTemplate)).isEqualTo("ascii_bin");
+  }
+
   private static int latestMigrationVersion() throws IOException {
     return Arrays.stream(
             new PathMatchingResourcePatternResolver().getResources("classpath:db/migration/*.sql"))

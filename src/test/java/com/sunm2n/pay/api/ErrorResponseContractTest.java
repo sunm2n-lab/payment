@@ -90,7 +90,9 @@ class ErrorResponseContractTest extends AbstractApiTest {
     @DisplayName("입력 검증 - amount 0 은 400 INVALID_REQUEST, 첫 필드 오류가 메시지다")
     void beanValidation(String accept) throws Exception {
       expectError(
-              perform(jsonBody(createBody("zero", 0, "CARD")), KEY, accept), 400, "INVALID_REQUEST")
+              perform(jsonBody(createBody("order-zero", 0, "CARD")), KEY, accept),
+              400,
+              "INVALID_REQUEST")
           .andExpect(jsonPath("$.message").value(Matchers.startsWith("amount: ")));
     }
 

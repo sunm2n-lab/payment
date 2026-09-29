@@ -1,0 +1,15 @@
+# S6 인덱스 없는 조건의 락 관측용 (docs/plan/S6.md 6.1, SCENARIO 197·270행).
+#
+# 관측 도구로만 켠다. 서버 파라미터를 바꿔 결과를 비교하는 것은 S11 이다.
+#
+# log_queries_not_using_indexes 는 long_query_time 과 무관하게 인덱스를 쓰지 않은 조회를 남긴다 - V5 의 주문 잠금 읽기
+# (풀스캔)가 여기에 찍히는지 본다. long_query_time 은 락을 기다린 후속이 걸리도록 1초로 둔다. 후속의 Query_time 과
+# Lock_time 이 어떻게 찍히는지는 예상하지 않고 관측해 기록한다.
+#
+# 로그 파일은 데이터 볼륨 안에 둔다. 확인: docker exec payment-mysql tail -n 50 /var/lib/mysql/slow.log
+# 컨테이너를 재시작해야 적용된다. 실행 중에는 SET GLOBAL 로 같은 값을 줄 수 있다.
+[mysqld]
+slow_query_log = ON
+slow_query_log_file = /var/lib/mysql/slow.log
+long_query_time = 1
+log_queries_not_using_indexes = ON

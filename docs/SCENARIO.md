@@ -81,7 +81,7 @@ cancel(paymentKey, cancelAmount)
 - Flyway 마이그레이션 V1: 위 테이블과 다음 인덱스만 명시적으로 생성. Hibernate 자동 DDL은 사용하지 않는다. 로컬 시드는 Flyway 이력에 넣지 않고 프로파일 한정 초기화 러너로 넣는다 (상세: `docs/plan/PHASE0.md` 4.2)
   - 각 테이블 PK, `payment(payment_key)` unique, `wallet(member_id)` unique, `merchant(api_key)` unique
   - **FK는 생성하지 않는다.** 원장 INSERT의 FK 검사 락이 S1/S2의 차감 유실 실험에 섞이는 것을 막는다. `wallet_ledger.wallet_id → wallet.id` FK는 S4에서 처음 추가
-  - **payment의 `merchant_id`, `order_id`, `(merchant_id, order_id)` 인덱스는 S6 이전에 만들지 않는다.** 가맹점별 주문 유일성은 도메인상 필요하지만, 제약 도입은 S6의 개선 단계로 미룬다
+  - **payment의 `merchant_id`, `order_id`, `(merchant_id, order_id)` 인덱스는 S6 이전에 만들지 않는다.** 가맹점별 주문 유일성은 도메인상 필요하지만, 제약 도입은 S6의 개선 단계로 미룬다 — S6에서 V6(`merchant_id` 단일 인덱스)·V7(`(merchant_id, order_id)` 복합 unique + `order_id` `ascii_bin`)로 추가했다 (`docs/phase1/S6.md`)
 - Spring Data JPA + 엔티티 + 레이어드 패키지 (`api` / `application` / `domain` / `infrastructure`) — 이후 #21 에서 업무별 패키지(`com.sunm2n.pay.<업무>.<계층>`)로 재배치했다. 현재 구조는 [STRUCTURE.md](STRUCTURE.md)
 - `CardApprovalClient` 인터페이스 + `FakeCardApprovalClient` (항상 성공, 승인번호 발급)
 - 정상 흐름 통합 테스트 (Testcontainers MySQL): 생성 → 승인 → 부분취소 → 조회
@@ -91,7 +91,7 @@ Phase 0 완료 기준: 정상 케이스 통합 테스트 통과, 서로 다른 C
 
 ### 실험 실행 시 주의사항
 
-- 재현 테스트와 개선 후 회귀 테스트를 구분한다. 각 실험에 **마이그레이션 버전, 서비스 구현, 격리 수준, 인덱스/FK, 유지·제거할 잠금, 동기화 지점**을 기록한다. 과거 실패 재현은 전용 DB를 해당 버전으로 초기화하고, 최신 스키마를 공유하지 않는다. 테스트에서는 같은 컨테이너에 버전별 데이터베이스를 두고 Flyway `target`으로 초기화한다 (S4의 `AbstractV2SchemaTest`, `docs/phase1/S4.md` 1.1; S5부터 `PastSchemaDatabase` 헬퍼로 버전별 베이스를 등록한다 — `AbstractV4SchemaTest`, `docs/phase1/S5.md` 1.1).
+- 재현 테스트와 개선 후 회귀 테스트를 구분한다. 각 실험에 **마이그레이션 버전, 서비스 구현, 격리 수준, 인덱스/FK, 유지·제거할 잠금, 동기화 지점**을 기록한다. 과거 실패 재현은 전용 DB를 해당 버전으로 초기화하고, 최신 스키마를 공유하지 않는다. 테스트에서는 같은 컨테이너에 버전별 데이터베이스를 두고 Flyway `target`으로 초기화한다 (S4의 `AbstractV2SchemaTest`, `docs/phase1/S4.md` 1.1; S5부터 `PastSchemaDatabase` 헬퍼로 버전별 베이스를 등록한다 — `AbstractV4SchemaTest`, `docs/phase1/S5.md` 1.1; S6은 `AbstractV5SchemaTest`·`AbstractV6SchemaTest`, `docs/phase1/S6.md` 1.1).
   - **좁은 예외**: additive 하고 `DEFAULT`가 있으며 **재현 경로의 엔티티에 매핑되지 않는** 컬럼 추가는 최신 스키마를 공유해도 된다. 재현이 그 컬럼을 읽지도 쓰지도 않으므로 같은 결과를 낸다. 예외를 적용하면 그 마이그레이션 이후에도 과거 재현이 green인지 확인해 근거를 남긴다 (S2의 V2 `wallet.version`: `docs/phase1/S2.md` 7.1).
 - 동시에 시작시키는 것만으로 결과를 보장하지 않는다. 두 요청의 조회 완료, 두 INSERT 완료 등 필요한 시점을 latch/barrier로 맞춘다. 개선된 코드에서는 먼저 락을 잡은 요청만 진행할 수 있으므로, 실패 재현용 barrier를 그대로 적용해 테스트 자체가 멈추지 않게 한다.
 - 이 교재의 동시성 테스트 메서드에는 `@Transactional`을 붙이지 않는다. 초기 데이터를 먼저 커밋하고 작업 스레드별로 독립 트랜잭션을 시작한다. 테스트 스레드의 트랜잭션은 작업 스레드로 전파되지 않는다.
@@ -196,7 +196,9 @@ Phase 0 완료 기준: 정상 케이스 통합 테스트 통과, 서로 다른 C
 - **원인**: 적절한 인덱스가 없으면 RR의 locking read가 넓은 범위를 스캔하고 잠근다. 최종 결과 행 수만으로 잠금 범위를 판단하지 않는다
 - **개선 비교**: 인덱스 없음 → `merchant_id` 단일 인덱스 → `(merchant_id, order_id)` 복합 unique. 각 실행 계획과 잠금 범위를 비교한다. unique 추가 전 중복 주문 데이터를 정리한다. slow query log와 `long_query_time`도 사용한다
 - **완료 기준**: 서로 다른 결제의 경합 감소 확인, 주문 유일성 검증. 단일 인덱스는 가맹점 범위로 좁힐 수 있지만 최종 선택은 복합 unique
-- **남기는 것**: S7에서 인덱스 없는 실험 스키마를 복원해 UPDATE와 SELECT FOR UPDATE를 RR/RC로 비교한다. RC에서도 locking read가 스캔 중 이미 잠긴 행을 만나면 대기할 수 있다
+  - 결과: 대기 행렬 11행에서 대기가 V5 10 → V6 4 → V7 0. 선행 하나의 레코드 락은 10,000건에서 10,076(PRIMARY 전체 + 페이지 supremum) → 가맹점 하나(보조 100 + 갭 + PRIMARY 100) → 2 (`docs/phase1/S6.md` 3절)
+  - unique 추가 전 정리는 마이그레이션이 아니라 절차(`docker/mysql/scripts/s6-order-cleanup.sql`)와 리허설 테스트다. V7은 중복·비ASCII만 실패로 알리고 ASCII 형식 위반은 통과시키므로 형식 확인이 필수 사전 조건이다 (5.4)
+- **남기는 것**: S7에서 인덱스 없는 실험 스키마를 복원해 UPDATE와 SELECT FOR UPDATE를 RR/RC로 비교한다 (`payment_v5`, `AbstractV5SchemaTest`). RC에서도 locking read가 스캔 중 이미 잠긴 행을 만나면 대기할 수 있다. 없는 주문의 갭락(`docs/phase1/S6.md` 3.7)이 RC에서 사라지는지도 본다. slow log의 `Lock_time`은 행 락 대기를 포함한다 (3.8)
 
 ### S7. 격리레벨 조정 — READ COMMITTED로 내리고 무엇이 달라지는지 본다
 

@@ -21,7 +21,7 @@ public final class MySqlLockErrors {
    */
   public static final int LOCK_WAIT_TIMEOUT = 1205;
 
-  /** {@code ER_DUP_ENTRY}. unique 위반. 락 실패는 아니지만 S5 의 키 선점은 이 코드로 판정한다. */
+  /** {@code ER_DUP_ENTRY}. unique 위반. 락 실패는 아니지만 S5 의 키 선점과 S6 의 중복 주문은 이 코드로 판정한다. */
   public static final int DUPLICATE_KEY = 1062;
 
   private MySqlLockErrors() {}

@@ -12,8 +12,8 @@ import org.springframework.data.repository.query.Param;
 public interface PaymentRepository extends JpaRepository<Payment, Long> {
 
   /**
-   * {@code payment_key} unique 인덱스로 조회한다. 가맹점 일치 검사는 이 조회 뒤 메모리에서 하므로 S6 의 {@code
-   * merchant_id}/{@code order_id} 인덱스 부재 실험에는 영향이 없다.
+   * {@code payment_key} unique 인덱스로 조회한다. 가맹점 일치 검사는 이 조회 뒤 메모리에서 한다. S6 의 주문 기반 조회는 이와 달리 {@code
+   * merchant_id} 를 SQL 조건에 넣는다.
    */
   Optional<Payment> findByPaymentKey(String paymentKey);
 
@@ -43,6 +43,30 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
   @Lock(LockModeType.PESSIMISTIC_WRITE)
   @Query("SELECT p FROM Payment p WHERE p.id = :id")
   Optional<Payment> findByIdForUpdate(@Param("id") Long id);
+
+  /**
+   * 주문 id 로 잠그지 않고 조회한다 ({@code docs/plan/S6.md} 4.1). 비잠금 읽기라 스냅샷을 읽고 어느 스키마에서도 잠금 대기에 막히지 않는다.
+   *
+   * <p>V7 이전에는 {@code (merchant_id, order_id)} 가 유일하지 않다. 결과가 둘 이상이면 Spring Data 가 {@code
+   * IncorrectResultSizeDataAccessException} 을 던지고 500 이 된다. 하나를 골라 응답하지 않는다.
+   */
+  Optional<Payment> findByMerchantIdAndOrderId(Long merchantId, String orderId);
+
+  /**
+   * S6 의 실습 대상 — 주문 id 로 잠그며 읽는다.
+   *
+   * <pre>SELECT ... FROM payment WHERE merchant_id = ? AND order_id = ? FOR UPDATE</pre>
+   *
+   * <p>InnoDB 는 조건에 맞은 행이 아니라 <b>찾느라 스캔한 인덱스 레코드</b>를 잠근다. 잠금 범위는 실행 계획이 정한다 — 인덱스 없음(V5)이면 클러스터
+   * 인덱스 전체, {@code merchant_id} 단일 인덱스(V6)면 그 가맹점의 엔트리와 뒤 갭, 복합 unique(V7)면 대상 한 행이다. 이 문장은 세 스키마에서
+   * 같다.
+   *
+   * <p>결과가 둘 이상이면(V7 이전의 중복 주문) {@link #findByMerchantIdAndOrderId} 와 같이 500 이다. 잘못된 결제를 취소하지 않는다.
+   */
+  @Lock(LockModeType.PESSIMISTIC_WRITE)
+  @Query("SELECT p FROM Payment p WHERE p.merchantId = :merchantId AND p.orderId = :orderId")
+  Optional<Payment> findByMerchantIdAndOrderIdForUpdate(
+      @Param("merchantId") Long merchantId, @Param("orderId") String orderId);
 
   /**
    * S1 의 조건부 UPDATE — READY 인 결제만 IN_PROGRESS 로 바꾸고 갱신 건수를 돌려준다. 1 을 받은 요청만 승인을 진행한다.
