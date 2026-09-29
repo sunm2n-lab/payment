@@ -1,5 +1,6 @@
 package com.sunm2n.pay.payment.domain;
 
+import com.sunm2n.pay.payment.domain.exception.InvalidOrderIdException;
 import java.util.regex.Pattern;
 
 /**
@@ -35,5 +36,17 @@ public final class OrderIds {
 
   public static boolean isValid(String orderId) {
     return orderId != null && PATTERN.matcher(orderId).matches();
+  }
+
+  /**
+   * 경로 변수 검증. 규칙 안이면 그대로 돌려준다. 거절 메시지에 받은 값을 넣지 않는다 — 규칙 밖의 값은 무엇이든 올 수 있다.
+   *
+   * <p>생성 요청 본문은 Bean Validation({@link #REGEX})으로 같은 규칙을 검사한다.
+   */
+  public static String validate(String orderId) {
+    if (!isValid(orderId)) {
+      throw new InvalidOrderIdException();
+    }
+    return orderId;
   }
 }

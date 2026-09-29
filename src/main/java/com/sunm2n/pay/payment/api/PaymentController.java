@@ -10,6 +10,7 @@ import com.sunm2n.pay.payment.application.CancelOutcome;
 import com.sunm2n.pay.payment.application.IdempotentCancelCoordinator;
 import com.sunm2n.pay.payment.application.PaymentService;
 import com.sunm2n.pay.payment.application.PaymentSnapshot;
+import com.sunm2n.pay.payment.domain.OrderIds;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -83,5 +84,39 @@ public class PaymentController {
   @GetMapping("/{paymentKey}")
   public PaymentResponse get(@PathVariable String paymentKey) {
     return PaymentResponse.from(paymentService.get(merchantContext.merchantId(), paymentKey));
+  }
+
+  /**
+   * 주문 id 로 조회한다 (S6). 잠그지 않는다. 경로 변수는 생성 요청과 같은 {@link OrderIds} 규칙으로 먼저 검증하고, 규칙 밖이면 조회하지 않고 400
+   * 이다.
+   *
+   * <p>{@code GET /{paymentKey}} 와 겹치지 않는다 — 그쪽은 세그먼트가 하나다 ({@code docs/plan/S6.md} 4.1).
+   */
+  @GetMapping("/orders/{orderId}")
+  public PaymentResponse getByOrder(@PathVariable String orderId) {
+    return PaymentResponse.from(
+        paymentService.getByOrder(merchantContext.merchantId(), OrderIds.validate(orderId)));
+  }
+
+  /**
+   * 주문 id 로 취소한다 (S6). {@code merchant_id} 와 {@code order_id} 로 잠그며 읽은 뒤 취소한다. 본문과 {@code
+   * Idempotency-Key} 규칙은 {@link #cancel} 과 같다.
+   *
+   * <p>검증 순서: 본문(인자 해석 단계) → 주문 id 형식 → 멱등키 형식. 어느 쪽이든 실패하면 조회·취소를 실행하지 않는다.
+   */
+  @PostMapping("/orders/{orderId}/cancel")
+  public ResponseEntity<PaymentSnapshot> cancelByOrder(
+      @PathVariable String orderId,
+      @RequestHeader(value = IdempotencyKeys.HEADER, required = false) String idempotencyKey,
+      @Valid @RequestBody CancelPaymentRequest request) {
+    String validOrderId = OrderIds.validate(orderId);
+    CancelOutcome outcome =
+        cancelCoordinator.cancelByOrder(
+            merchantContext.merchantId(),
+            idempotencyKey == null ? null : IdempotencyKeys.validate(idempotencyKey),
+            validOrderId,
+            request.cancelAmount(),
+            request.reason());
+    return ResponseEntity.status(outcome.status()).body(outcome.body());
   }
 }

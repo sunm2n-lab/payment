@@ -8,6 +8,7 @@ import com.sunm2n.pay.payment.application.PaymentSupport;
 import com.sunm2n.pay.payment.application.cancellation.CheckThenInsertIdempotentCanceller;
 import com.sunm2n.pay.payment.application.cancellation.LockingLookupIdempotentCanceller;
 import com.sunm2n.pay.payment.application.cancellation.NaivePaymentCanceller;
+import com.sunm2n.pay.payment.application.cancellation.OrderLockingPaymentCanceller;
 import com.sunm2n.pay.payment.application.cancellation.PaymentCanceller;
 import com.sunm2n.pay.payment.application.cancellation.PessimisticLockPaymentCanceller;
 import com.sunm2n.pay.payment.application.confirmation.CasPaymentConfirmer;
@@ -264,6 +265,22 @@ public class ConcurrencyStrategyConfig {
       PaymentRepository paymentRepository,
       PessimisticLockWalletBalanceUpdater pessimisticUpdater) {
     return new PessimisticLockPaymentCanceller(support, paymentRepository, pessimisticUpdater);
+  }
+
+  /**
+   * S6 주문 기반 취소 — {@code merchant_id}·{@code order_id} 조건의 {@code FOR UPDATE}. {@link
+   * PaymentService} 가 이 빈에 위임한다.
+   *
+   * <p>실패 버전과 개선 버전이 코드로 갈리지 않는다. 인덱스 없음 → 단일 인덱스 → 복합 unique 의 차이는 스키마(V5·V6·V7)가 만들고, 이 빈은 세 단계에서
+   * 같다 ({@code docs/plan/S6.md} 4.3). 빈으로 두는 이유는 {@code @Transactional} 프록시다. 환불은 본선과 같은 비관적 락
+   * 전략이다.
+   */
+  @Bean
+  OrderLockingPaymentCanceller orderLockingPaymentCanceller(
+      PaymentSupport support,
+      PaymentRepository paymentRepository,
+      PessimisticLockWalletBalanceUpdater pessimisticUpdater) {
+    return new OrderLockingPaymentCanceller(support, paymentRepository, pessimisticUpdater);
   }
 
   /**

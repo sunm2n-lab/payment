@@ -1,9 +1,11 @@
 package com.sunm2n.pay.payment.application;
 
+import com.sunm2n.pay.payment.application.cancellation.OrderLockingPaymentCanceller;
 import com.sunm2n.pay.payment.application.cancellation.PaymentCanceller;
 import com.sunm2n.pay.payment.application.confirmation.PaymentConfirmer;
 import com.sunm2n.pay.payment.domain.Payment;
 import com.sunm2n.pay.payment.domain.PaymentMethod;
+import com.sunm2n.pay.payment.domain.exception.OrderNotFoundException;
 import com.sunm2n.pay.payment.infrastructure.PaymentRepository;
 import com.sunm2n.pay.wallet.application.WalletService;
 import java.util.UUID;
@@ -28,18 +30,21 @@ public class PaymentService {
   private final PaymentSupport support;
   private final PaymentConfirmer confirmer;
   private final PaymentCanceller canceller;
+  private final OrderLockingPaymentCanceller orderCanceller;
 
   public PaymentService(
       PaymentRepository paymentRepository,
       WalletService walletService,
       PaymentSupport support,
       PaymentConfirmer confirmer,
-      PaymentCanceller canceller) {
+      PaymentCanceller canceller,
+      OrderLockingPaymentCanceller orderCanceller) {
     this.paymentRepository = paymentRepository;
     this.walletService = walletService;
     this.support = support;
     this.confirmer = confirmer;
     this.canceller = canceller;
+    this.orderCanceller = orderCanceller;
   }
 
   /** 결제 생성. MONEY 는 memberId 로 지갑 id 를 찾아 wallet_id 로 저장한다. 잔액은 읽지 않는다. */
@@ -76,8 +81,27 @@ public class PaymentService {
     return canceller.cancel(merchantId, paymentKey, cancelAmount, reason);
   }
 
+  /**
+   * 주문 id 로 취소한다 (S6). {@code merchant_id} 와 {@code order_id} 로 잠그며 읽는다. 구현과 트랜잭션 경계는 {@link
+   * OrderLockingPaymentCanceller} 에 있다.
+   */
+  public Payment cancelByOrder(Long merchantId, String orderId, long cancelAmount, String reason) {
+    return orderCanceller.cancel(merchantId, orderId, cancelAmount, reason);
+  }
+
   @Transactional(readOnly = true)
   public Payment get(Long merchantId, String paymentKey) {
     return support.findOwnedPayment(merchantId, paymentKey);
+  }
+
+  /**
+   * 주문 id 로 잠그지 않고 조회한다 (S6). 가맹점은 SQL 조건이다 — 다른 가맹점의 주문은 결과가 없어 404 이다. 비교 대조군이라 어느 스키마에서도 잠금 대기에
+   * 막히지 않는다.
+   */
+  @Transactional(readOnly = true)
+  public Payment getByOrder(Long merchantId, String orderId) {
+    return paymentRepository
+        .findByMerchantIdAndOrderId(merchantId, orderId)
+        .orElseThrow(() -> new OrderNotFoundException(orderId));
   }
 }

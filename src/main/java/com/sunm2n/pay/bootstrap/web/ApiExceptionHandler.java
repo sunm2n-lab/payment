@@ -7,7 +7,9 @@ import com.sunm2n.pay.idempotency.IdempotencyKeyReusedException;
 import com.sunm2n.pay.idempotency.InvalidIdempotencyKeyException;
 import com.sunm2n.pay.merchant.api.auth.UnauthorizedMerchantException;
 import com.sunm2n.pay.payment.domain.exception.CancelAmountExceededException;
+import com.sunm2n.pay.payment.domain.exception.InvalidOrderIdException;
 import com.sunm2n.pay.payment.domain.exception.InvalidPaymentStatusException;
+import com.sunm2n.pay.payment.domain.exception.OrderNotFoundException;
 import com.sunm2n.pay.payment.domain.exception.PaymentMismatchException;
 import com.sunm2n.pay.payment.domain.exception.PaymentNotFoundException;
 import com.sunm2n.pay.wallet.domain.exception.BalanceOverflowException;
@@ -63,7 +65,11 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
     return error(e, HttpStatus.UNAUTHORIZED, "UNAUTHORIZED", e.getMessage(), request);
   }
 
-  @ExceptionHandler({PaymentNotFoundException.class, WalletNotFoundException.class})
+  @ExceptionHandler({
+    PaymentNotFoundException.class,
+    OrderNotFoundException.class,
+    WalletNotFoundException.class
+  })
   public ResponseEntity<Object> handleNotFound(DomainException e, WebRequest request) {
     return error(e, HttpStatus.NOT_FOUND, "NOT_FOUND", e.getMessage(), request);
   }
@@ -115,6 +121,13 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
   @ExceptionHandler(InvalidIdempotencyKeyException.class)
   public ResponseEntity<Object> handleInvalidIdempotencyKey(
       InvalidIdempotencyKeyException e, WebRequest request) {
+    return error(e, HttpStatus.BAD_REQUEST, "INVALID_REQUEST", e.getMessage(), request);
+  }
+
+  /** 경로 변수의 주문 id 가 형식 규칙 밖이다 (S6). 조회·취소를 실행하지 않는다. */
+  @ExceptionHandler(InvalidOrderIdException.class)
+  public ResponseEntity<Object> handleInvalidOrderId(
+      InvalidOrderIdException e, WebRequest request) {
     return error(e, HttpStatus.BAD_REQUEST, "INVALID_REQUEST", e.getMessage(), request);
   }
 

@@ -80,6 +80,15 @@ public class ConcurrencyGate {
    */
   public static final String KEY_CLAIMED = "key-claimed";
 
+  /**
+   * {@code PaymentRepository.findByMerchantIdAndOrderIdForUpdate} <b>반환 직후</b> — 선행이 스캔한 락을 쥔 시점
+   * (S6). hold 로 쓴다.
+   *
+   * <p>X 락은 공존하지 않으므로 barrier 로 쓰지 않는다. 선행을 여기 붙잡은 채 후속을 보내고, 후속이 막히는지 {@code LockWaitProbe} 로 본다.
+   * 잠금 범위는 스키마(실행 계획)가 정한다 — 같은 지점에서 V5·V6·V7 의 대기 결과가 다르다 ({@code docs/plan/S6.md} 3.1).
+   */
+  public static final String ORDER_LOCKED = "order-locked";
+
   private static final Duration TIMEOUT = Duration.ofSeconds(10);
 
   private final Map<String, Point> gates = new ConcurrentHashMap<>();

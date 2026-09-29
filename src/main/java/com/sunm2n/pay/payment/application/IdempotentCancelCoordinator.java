@@ -79,6 +79,26 @@ public class IdempotentCancelCoordinator {
   }
 
   /**
+   * 주문 기반 취소 (S6). 선점·저장·재생 규칙은 {@code paymentKey} 취소와 같고, fingerprint 만 {@link
+   * OrderCancelFingerprint} 다. 키 INSERT 가 payment 잠금 읽기보다 먼저 나간다 — insert-first.
+   *
+   * @param idempotencyKey 형식 검증을 마친 키. {@code null} 이면 키 없는 경로다
+   */
+  public CancelOutcome cancelByOrder(
+      Long merchantId, String idempotencyKey, String orderId, long cancelAmount, String reason) {
+    if (idempotencyKey == null) {
+      return CancelOutcome.ok(
+          PaymentSnapshot.from(
+              paymentService.cancelByOrder(merchantId, orderId, cancelAmount, reason)));
+    }
+    return cancel(
+        merchantId,
+        idempotencyKey,
+        OrderCancelFingerprint.hash(orderId, cancelAmount, reason),
+        () -> paymentService.cancelByOrder(merchantId, orderId, cancelAmount, reason));
+  }
+
+  /**
    * 선점 → 실행 → 저장. 선점 충돌이면 저장된 응답을 재생한다.
    *
    * @param idempotencyKey 형식 검증을 마친 키. {@code null} 이 아니다

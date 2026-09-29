@@ -56,6 +56,23 @@ public abstract class AbstractApiTest extends AbstractIntegrationTest {
     return mockMvc.perform(withKey(get("/v1/payments/{key}", paymentKey), apiKey));
   }
 
+  protected ResultActions getPaymentByOrder(String apiKey, String orderId) throws Exception {
+    return mockMvc.perform(withKey(get("/v1/payments/orders/{orderId}", orderId), apiKey));
+  }
+
+  protected ResultActions cancelPaymentByOrder(String apiKey, String orderId, String body)
+      throws Exception {
+    return mockMvc.perform(
+        json(post("/v1/payments/orders/{orderId}/cancel", orderId), apiKey, body));
+  }
+
+  protected ResultActions cancelPaymentByOrderWithKey(
+      String apiKey, String orderId, String body, String idempotencyKey) throws Exception {
+    return mockMvc.perform(
+        json(post("/v1/payments/orders/{orderId}/cancel", orderId), apiKey, body)
+            .header(IdempotencyKeys.HEADER, idempotencyKey));
+  }
+
   /** 경로 변수를 그대로 넘긴다. 형식이 잘못된 값(예: {@code "abc"})을 보낼 때 쓴다. */
   protected ResultActions getWalletRaw(String apiKey, Object memberId) throws Exception {
     return mockMvc.perform(withKey(get("/v1/wallets/{id}", memberId), apiKey));
