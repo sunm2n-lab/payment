@@ -46,14 +46,15 @@ class SchemaConstraintTest extends AbstractIntegrationTest {
 
   @Test
   @DisplayName(
-      "payment 의 검색 인덱스는 V6 의 merchant_id 단일 인덱스뿐이다 - 인덱스 없음 전제는 V5SchemaContextTest 가 지킨다")
-  void paymentHasOnlyMerchantIndex() {
+      "payment 의 인덱스는 PK, uk_payment_payment_key, uk_payment_merchant_order 뿐이다 - V7 이 단일 인덱스를 교체했다")
+  void paymentIndexesAfterV7() {
     assertThat(PaymentSchema.indexNames(jdbcTemplate))
-        .containsExactlyInAnyOrder("PRIMARY", "uk_payment_payment_key", "idx_payment_merchant_id");
+        .containsExactlyInAnyOrder(
+            "PRIMARY", "uk_payment_payment_key", "uk_payment_merchant_order");
   }
 
   @Test
-  @DisplayName("unique 인덱스는 V1 의 payment_key / member_id / api_key 와 V5 의 멱등키뿐이다")
+  @DisplayName("unique 인덱스는 V1 의 payment_key / member_id / api_key, V5 의 멱등키, V7 의 주문뿐이다")
   void onlyExpectedUniqueIndexes() {
     List<String> uniqueIndexes =
         jdbcTemplate.queryForList(
@@ -66,7 +67,8 @@ class SchemaConstraintTest extends AbstractIntegrationTest {
             "uk_payment_payment_key",
             "uk_wallet_member_id",
             "uk_merchant_api_key",
-            "uk_idempotency_key");
+            "uk_idempotency_key",
+            "uk_payment_merchant_order");
   }
 
   @Test

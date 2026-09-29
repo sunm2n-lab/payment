@@ -7,6 +7,7 @@ import com.sunm2n.pay.idempotency.IdempotencyKeyReusedException;
 import com.sunm2n.pay.idempotency.InvalidIdempotencyKeyException;
 import com.sunm2n.pay.merchant.api.auth.UnauthorizedMerchantException;
 import com.sunm2n.pay.payment.domain.exception.CancelAmountExceededException;
+import com.sunm2n.pay.payment.domain.exception.DuplicateOrderException;
 import com.sunm2n.pay.payment.domain.exception.InvalidOrderIdException;
 import com.sunm2n.pay.payment.domain.exception.InvalidPaymentStatusException;
 import com.sunm2n.pay.payment.domain.exception.OrderNotFoundException;
@@ -101,6 +102,13 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
   public ResponseEntity<Object> handleCancelExceeded(
       CancelAmountExceededException e, WebRequest request) {
     return error(e, HttpStatus.CONFLICT, "CANCEL_AMOUNT_EXCEEDED", e.getMessage(), request);
+  }
+
+  /** 같은 가맹점의 같은 주문 id 로 다시 생성했다. 내용이 같아도 409 다 (S6). */
+  @ExceptionHandler(DuplicateOrderException.class)
+  public ResponseEntity<Object> handleDuplicateOrder(
+      DuplicateOrderException e, WebRequest request) {
+    return error(e, HttpStatus.CONFLICT, "DUPLICATE_ORDER", e.getMessage(), request);
   }
 
   /** 같은 멱등키에 다른 요청 내용. 저장된 응답을 돌려주지 않는다 (S5). */
