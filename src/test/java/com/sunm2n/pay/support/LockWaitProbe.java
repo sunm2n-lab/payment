@@ -131,6 +131,44 @@ public final class LockWaitProbe {
     return data;
   }
 
+  private static final String RECORD_LOCKS =
+      "SELECT INDEX_NAME, LOCK_MODE, LOCK_DATA, ENGINE_LOCK_ID FROM performance_schema.data_locks"
+          + " WHERE OBJECT_SCHEMA = ? AND OBJECT_NAME = ? AND ENGINE_TRANSACTION_ID = ?"
+          + " AND LOCK_TYPE = 'RECORD'";
+
+  /** 트랜잭션 {@code trxId} 의 레코드 락 한 줄씩. 페이지 번호로 갭의 위치를 설명할 때 쓴다. */
+  public static List<RecordLock> recordLocksOf(String schema, String table, long trxId) {
+    List<RecordLock> locks = new ArrayList<>();
+    try (Connection root = root();
+        PreparedStatement statement = root.prepareStatement(RECORD_LOCKS)) {
+      statement.setString(1, schema);
+      statement.setString(2, table);
+      statement.setLong(3, trxId);
+      try (ResultSet rs = statement.executeQuery()) {
+        while (rs.next()) {
+          locks.add(
+              new RecordLock(
+                  rs.getString(1), rs.getString(2), rs.getString(3), pageOf(rs.getString(4))));
+        }
+      }
+    } catch (SQLException e) {
+      throw new IllegalStateException("레코드 락을 조회하지 못했다", e);
+    }
+    return locks;
+  }
+
+  /**
+   * {@code ENGINE_LOCK_ID} 의 페이지 번호. 레코드 락의 id 는 {@code ...:<space>:<page>:<heap_no>:<lock>} 으로 끝난다
+   * (MySQL 8.0.44 실측). 끝에서 세 번째 필드다.
+   */
+  public static long pageOf(String engineLockId) {
+    String[] parts = engineLockId.split(":");
+    return Long.parseLong(parts[parts.length - 3]);
+  }
+
+  /** 레코드 락 한 줄. {@code data} 는 보조 인덱스면 {@code "merchant_id, id"}, PRIMARY 면 {@code "id"} 다. */
+  public record RecordLock(String index, String mode, String data, long page) {}
+
   /**
    * 레코드 락 개수. {@code index} 는 {@code PRIMARY} 또는 보조 인덱스 이름, {@code status} 는 {@code GRANTED}/{@code
    * WAITING}.
