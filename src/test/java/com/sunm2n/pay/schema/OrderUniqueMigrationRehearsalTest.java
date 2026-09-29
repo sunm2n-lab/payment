@@ -108,6 +108,29 @@ class OrderUniqueMigrationRehearsalTest {
         .hasMessageContaining("Duplicate entry");
   }
 
+  /**
+   * 끝 줄바꿈 — 계획 4.6 의 확인 쿼리({@code '^[A-Za-z0-9_-]{6,64}$'})가 놓친 사례. MySQL 정규식의 {@code $} 는 마지막 줄바꿈
+   * 앞에서도 일치한다. 확인 1 은 길이와 허용하지 않는 문자를 따로 보므로 잡는다.
+   */
+  @Test
+  @DisplayName("리허설 3' - 끝에 LF·CR·CRLF 가 붙은 주문 id 는 $ 정규식을 통과하고 V7 도 통과한다. 확인 1 이 잡는다")
+  void trailingLineBreakPassesDollarRegexAndV7() throws SQLException {
+    long lf = insert(1, "order-lf\n");
+    long cr = insert(1, "order-cr\r");
+    long crlf = insert(1, "order-crlf\r\n");
+
+    assertThat(
+            ids(
+                "SELECT id FROM payment WHERE NOT REGEXP_LIKE(order_id, '^[A-Za-z0-9_-]{6,64}$', 'c')"))
+        .as("계획의 확인 쿼리는 셋 다 놓친다")
+        .isEmpty();
+    assertThat(ids(step("check1"))).containsExactlyInAnyOrder(lf, cr, crlf);
+
+    flyway("7").migrate();
+
+    assertThat(orderIdOf(crlf)).as("V7 은 막지 못하고 줄바꿈이 그대로 남는다").isEqualTo("order-crlf\r\n");
+  }
+
   @Test
   @DisplayName(
       "리허설 4 - 'aaaaaa' 와 'aaaaaa ' 는 확인 2 로는 중복이 아닌데 V7 은 실패한다. 확인 1 이 'aaaaaa ' 를 잡는다 - 순서를 지키는 이유")
@@ -151,6 +174,7 @@ class OrderUniqueMigrationRehearsalTest {
     long slash = insert(1, "a/bcdef");
     insert(1, "aaaaaa");
     long padded = insert(1, "aaaaaa ");
+    long lineBreak = insert(1, "order-keep-1\n");
     long other = insert(2, "order-dup-1");
 
     run(step("format.prepare"));
@@ -172,6 +196,7 @@ class OrderUniqueMigrationRehearsalTest {
     assertThat(orderIdOf(dupFix)).isEqualTo("fixed-" + dupFix);
     assertThat(orderIdOf(slash)).isEqualTo("fixed-" + slash);
     assertThat(orderIdOf(padded)).isEqualTo("fixed-" + padded);
+    assertThat(orderIdOf(lineBreak)).as("끝 줄바꿈도 ① 이 정상화한다").isEqualTo("fixed-" + lineBreak);
     assertThat(orderIdOf(other)).as("다른 가맹점의 같은 주문은 중복이 아니다").isEqualTo("order-dup-1");
     assertThat(PaymentSchemaOf.orderIdCollation(connection)).isEqualTo("ascii_bin");
   }

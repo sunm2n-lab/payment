@@ -6,6 +6,11 @@
 -- 순서가 있다. 형식을 먼저 정상화하고, 그 다음에 중복을 센다. ascii_bin(V7)은 뒤 공백을 무시하고 비교하지만 확인 2 의
 -- utf8mb4_0900_bin 은 뒤 공백을 구분한다. 'a' 와 'a ' 가 함께 있으면 확인 2 는 0행인데 V7 은 1062 로 실패한다.
 --
+-- 형식 검사는 길이와 허용하지 않는 문자를 따로 본다. '^...{6,64}$' 한 정규식으로 쓰면 안 된다 - MySQL(ICU) 정규식의
+-- $ 는 문자열 끝뿐 아니라 마지막 줄바꿈 앞에서도 일치해 'order-1' + LF / CR / CRLF 가 검사를 통과한다. 그 값은 V7 도
+-- 그대로 통과하고, 애플리케이션의 OrderIds 는 거절하므로 새 API 로 접근할 수 없는 결제가 남는다. \z 로 끝을 고정하는
+-- 방법도 있지만 SQL 문자열의 역슬래시 이스케이프가 sql_mode(NO_BACKSLASH_ESCAPES)에 따라 달라진다.
+--
 -- 한 번에 실행하지 않는다. @step 단위로 하나씩 실행하고 결과를 본다. 리허설 테스트(OrderUniqueMigrationRehearsalTest)도
 -- 이 파일을 @step 단위로 읽어 같은 순서로 실행한다.
 --
@@ -18,7 +23,8 @@
 -- @step check1
 -- 확인 1. 형식 밖의 주문 id. 0행이어야 한다 - V7 적용의 필수 사전 조건. ASCII 형식 위반은 V7 이 막지 못한다
 SELECT id, merchant_id, order_id FROM payment
-WHERE NOT REGEXP_LIKE(order_id, '^[A-Za-z0-9_-]{6,64}$', 'c');
+WHERE CHAR_LENGTH(order_id) NOT BETWEEN 6 AND 64
+   OR REGEXP_LIKE(order_id, '[^A-Za-z0-9_-]', 'c');
 
 -- @step check2
 -- 확인 2. 중복 주문. 0행이어야 한다. 전제: 확인 1 이 0행이다
@@ -37,7 +43,8 @@ CREATE TABLE s6_order_fix (
 );
 INSERT INTO s6_order_fix (id, merchant_id, new_order_id)
 SELECT id, merchant_id, CONCAT('fixed-', id) FROM payment
-WHERE NOT REGEXP_LIKE(order_id, '^[A-Za-z0-9_-]{6,64}$', 'c');
+WHERE CHAR_LENGTH(order_id) NOT BETWEEN 6 AND 64
+   OR REGEXP_LIKE(order_id, '[^A-Za-z0-9_-]', 'c');
 
 -- @step duplicates.prepare
 -- ② 중복 정리: 확인 2 의 묶음마다 id 가 가장 작은 행을 남기고 나머지
