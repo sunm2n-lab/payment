@@ -26,14 +26,17 @@ DTO 를 직접 반환한다. `data` 같은 래퍼를 두지 않는다. 테스트
 |---|---|---|---|
 | 인증 실패 | 401 | `UNAUTHORIZED` | 예외 메시지 |
 | 결제·지갑 없음 (소유권 위반 포함) | 404 | `NOT_FOUND` | 예외 메시지 |
+| 주문 id 로 찾은 결제 없음 — 다른 가맹점의 주문 포함 (S6) | 404 | `NOT_FOUND` | `결제를 찾을 수 없습니다. orderId=...` |
 | 잔액 부족 | 409 | `INSUFFICIENT_BALANCE` | 예외 메시지 |
 | 잔액 상한 초과 | 409 | `BALANCE_LIMIT_EXCEEDED` | 예외 메시지 |
 | 승인할 수 없는 결제 상태 | 409 | `INVALID_PAYMENT_STATUS` | 예외 메시지 |
 | 승인 값 불일치 | 409 | `PAYMENT_MISMATCH` | 예외 메시지 |
 | 취소 가능 금액 초과 | 409 | `CANCEL_AMOUNT_EXCEEDED` | 예외 메시지 |
+| 같은 가맹점에 같은 주문 id 의 결제가 이미 있음 (S6) | 409 | `DUPLICATE_ORDER` | 예외 메시지. 내용이 같아도 409 |
 | 같은 멱등키에 다른 요청 내용 (S5) | 409 | `IDEMPOTENCY_KEY_REUSED` | 예외 메시지 |
 | 같은 멱등키의 선행 요청 처리 중, 선점 대기 상한 초과 (S5) | 409 | `IDEMPOTENCY_KEY_IN_USE` | 예외 메시지. 같은 키로 다시 보내면 되는 재시도 가능한 충돌 |
 | `Idempotency-Key` 헤더 형식 오류 (S5) | 400 | `INVALID_REQUEST` | `Idempotency-Key: <사유>` |
+| 경로 변수의 주문 id 형식 오류 (S6) | 400 | `INVALID_REQUEST` | `orderId: 영문 대소문자, 숫자, '-', '_' 로 이루어진 6~64자여야 합니다.` |
 | Bean Validation | 400 | `INVALID_REQUEST` | 첫 필드 오류 `field: message`, 없으면 첫 전역 오류, 없으면 `요청 값이 올바르지 않습니다.` |
 | 본문 파싱 (깨진 JSON, 알 수 없는 enum, 소수 금액 등) | 400 | `INVALID_REQUEST` | `요청 본문을 해석할 수 없습니다.` |
 | 경로 변수 타입 불일치 | 400 | `INVALID_REQUEST` | `<변수명>: 값의 형식이 올바르지 않습니다.` |
@@ -59,7 +62,7 @@ DTO 를 직접 반환한다. `data` 같은 래퍼를 두지 않는다. 테스트
 
 ### 2.2 범위
 
-DispatcherServlet 이 처리하는 요청까지다. 필터 단계의 오류, 연결 단절, 응답 전송 실패는 JSON 을 보장하지 않는다.
+DispatcherServlet 이 처리하는 요청까지다. 필터 단계의 오류, 연결 단절, 응답 전송 실패는 JSON 을 보장하지 않는다. 서블릿 컨테이너가 MVC 전에 거절하는 요청도 마찬가지다 — 예: 경로의 인코딩된 슬래시(`%2F`)·NUL(`%00`)은 Tomcat 이 400 과 HTML 본문으로 응답한다 (2.4).
 
 ### 2.3 멱등키 — 취소 (S5)
 
@@ -81,6 +84,23 @@ DispatcherServlet 이 처리하는 요청까지다. 필터 단계의 오류, 연
 - **동일 응답**의 기준은 HTTP 상태와 JSON 필드·값이다. 필드 순서와 공백은 계약이 아니다
 - **보장 범위**: 같은 키로 커밋되는 취소는 최대 한 건이고 그 성공 응답이 재생된다. 동시 요청이 **모두** 성공 응답을 받는다는 보장은 아니다 — 선행이 롤백할 때 대기자가 둘 이상이면 한 명이 데드락(1213)으로 **500** 을 받을 수 있다. 그 요청도 전체 롤백되므로 같은 키로 다시 보내면 안전하다
 - 다른 API(생성·승인·충전)에는 아직 멱등키가 없다 (Phase 1 종료 점검)
+- 주문 기반 취소(2.4)도 같은 규칙이다. 요청 내용은 `orderId`·`cancelAmount`·`reason` 이고 키 범위(가맹점, `CANCEL`)를 `paymentKey` 취소와 공유한다. 같은 키를 두 취소 경로에 쓰면 같은 결제라도 409 `IDEMPOTENCY_KEY_REUSED` 다
+
+### 2.4 주문 id — 형식, 유일성, 주문 기반 API (S6)
+
+상세와 근거는 [phase1/S6.md](phase1/S6.md) 5절.
+
+**형식.** 영문 대소문자, 숫자, `-`, `_` 로 이루어진 **6~64자.** 대소문자를 구분한다. 결제 생성의 `orderId` 와 아래 두 API 의 경로 변수가 같은 규칙을 쓴다. 위반은 400 `INVALID_REQUEST` 이고 생성·조회·취소를 실행하지 않는다. 주문 id 는 가맹점이 발급하며 이 규칙은 형식만 본다. 승인 요청의 `orderId` 에는 형식 제한이 없다 — 저장된 값과 다르면 지금처럼 409 `PAYMENT_MISMATCH` 다.
+
+**유일성.** 한 가맹점 안에서 주문 id 는 하나의 결제만 가리킨다. 같은 가맹점이 같은 주문 id 로 다시 생성하면 409 `DUPLICATE_ORDER` 다 — 요청 내용이 같아도 409 이고, 기존 결제로 응답하지 않는다 (재전송 응답은 Phase 1 종료 점검). 다른 가맹점은 같은 주문 id 를 쓸 수 있다. `Order-1` 과 `order-1` 은 다른 주문이다.
+
+| 메서드 | 경로 | 동작 |
+|---|---|---|
+| GET | `/v1/payments/orders/{orderId}` | 요청 가맹점의 그 주문의 결제. 응답 본문은 `GET /v1/payments/{paymentKey}` 와 같다. 잠그지 않는다 |
+| POST | `/v1/payments/orders/{orderId}/cancel` | 그 결제를 잠그며 읽은 뒤 취소한다. 본문·`Idempotency-Key`·오류는 `POST /v1/payments/{paymentKey}/cancel` 과 같다 |
+
+- 없는 주문과 다른 가맹점의 주문은 모두 404 `NOT_FOUND` 이고 응답이 같다
+- 경로의 주문 id 는 서블릿 컨테이너가 디코딩한 뒤 형식을 검사한다. 인코딩된 공백·악센트·마침표·세미콜론(`%20`, `%C3%A9`, `%2E`, `%3B`)은 400 `INVALID_REQUEST` 다. 인코딩된 슬래시·NUL(`%2F`, `%00`)은 컨테이너가 먼저 400(HTML)으로 거절한다. 인코딩하지 않은 경로 파라미터(`;x=1`)는 컨테이너가 떼어 내고 나머지로 처리한다 (`OrderPathServerTest`)
 
 ## 3. 판정 순서
 
@@ -97,6 +117,13 @@ DispatcherServlet 이 처리하는 요청까지다. 필터 단계의 오류, 연
 | `POST /v1/payments`, `Content-Type: text/plain` | 없음 | 401 | |
 | `POST /v1/payments`, `Content-Type: text/plain` | 유효 | 415 | |
 | `POST /v1/wallets/1` | 유효 | 405 | `Allow` = {GET} |
+| `GET /v1/payments/orders` | 유효 | 404 | `GET /{paymentKey}` 에 매칭되어 `paymentKey=orders` 를 찾는다 (S6) |
+| `POST /v1/payments/orders/cancel` | 유효 | 404 | `POST /{paymentKey}/cancel` 에 매칭되어 `paymentKey=orders` (S6) |
+| `GET /v1/payments/orders/cancel` | 유효 | 404 | 주문 조회 — `orderId=cancel`(6자) (S6) |
+| `GET /v1/payments/orders/abcde` (형식 밖) | 없음 | 401 | 인증이 주문 id 형식보다 먼저다 (S6) |
+| `POST /v1/payments/orders/abcde/cancel`, `cancelAmount` 0 | 유효 | 400 | 메시지는 `cancelAmount...` — 본문 검증(인자 해석)이 주문 id 형식보다 먼저다 (S6) |
+| `POST /v1/payments/orders/abcde/cancel`, 쉼표 든 멱등키 | 유효 | 400 | 메시지는 `orderId...` — 주문 id 형식이 멱등키 형식보다 먼저다 (S6) |
+| `PUT /v1/payments/orders/order-1` | 유효 | 405 | `Allow` = {GET} (S6) |
 
 - **405 는 인증보다 먼저다.** 핸들러 매핑 단계에서 나므로 인터셉터에 닿지 않는다
 - **`/v1/**` 아래의 404·415 는 인증 뒤다.** 정적 리소스 핸들러 매핑에도 인터셉터가 적용되므로 없는 경로도 키가 없으면 401 이다
@@ -130,12 +157,18 @@ DispatcherServlet 이 처리하는 요청까지다. 필터 단계의 오류, 연
 | `ErrorResponseServerTest` | 내장 서버에서 `Accept: text/plain` 404 + JSON |
 | `IdempotentCancelRegressionTest` | 2.3 의 순차 재생·내용 불일치·키 규칙·업무 실패 뒤 재실행 (S5) |
 | `IdempotencyKeyHeaderServerTest` | 내장 서버에서 헤더 앞뒤 공백 제거, 복수 헤더 400, 빈 값 400 (S5) |
+| `OrderIdFormatApiTest` | 생성 요청의 주문 id 형식 400, 6·64자 허용 (S6) |
+| `OrderCancelRegressionTest` | 2.4 의 주문 기반 조회·취소, 404, 멱등키 교차 사용 409, 경로의 형식 400 (S6) |
+| `OrderUniquenessRegressionTest` | 409 `DUPLICATE_ORDER` 순차·동시, 다른 가맹점 허용, 대소문자 구분 (S6) |
+| `OrderPathServerTest` | 내장 서버에서 인코딩된 주문 id 경로의 처리 (S6) |
 
 ## 6. 범위 밖
 
 | 하지 않는 것 | 비고 |
 |---|---|
 | 취소 외 API 의 멱등키 | Phase 1 종료 점검 (충전은 S5 구현을 `operation=CHARGE` 로 재사용) |
+| 같은 내용의 생성 재전송에 기존 결제로 응답 | Phase 1 종료 점검. 지금은 내용과 무관하게 409 `DUPLICATE_ORDER` |
+| 승인 요청 `orderId` 의 형식 제한 | 저장된 값과의 일치만 본다 |
 | 키 INSERT 의 1213 을 재시도 가능한 409 로 번역 | 지금은 500. S5 관측 결과와 함께 후보로 남김 |
 | 기술 예외의 개별 오류 코드 | 지금은 500 |
 | 업무별 advice 분리, 추적 ID, 검증 오류 목록, RFC 7807 `ProblemDetail` | 미정 |

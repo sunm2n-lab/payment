@@ -15,14 +15,17 @@ com.sunm2n.pay
 │   ├── api                  PaymentController
 │   │   └── dto              CreatePaymentRequest, ConfirmPaymentRequest, CancelPaymentRequest, PaymentResponse
 │   ├── application          PaymentService, PaymentSupport,
-│   │   │                    IdempotentCancelCoordinator, CancelFingerprint, PaymentSnapshot, CancelOutcome
+│   │   │                    IdempotentCancelCoordinator, CancelFingerprint, OrderCancelFingerprint,
+│   │   │                    PaymentSnapshot, CancelOutcome
 │   │   ├── confirmation     PaymentConfirmer, NaivePaymentConfirmer, CasPaymentConfirmer,
 │   │   │                    RetryingPaymentConfirmer, RetryMetrics
 │   │   └── cancellation     PaymentCanceller, NaivePaymentCanceller, PessimisticLockPaymentCanceller,
-│   │                        CheckThenInsertIdempotentCanceller, LockingLookupIdempotentCanceller
-│   ├── domain               Payment, PaymentCancel, PaymentMethod, PaymentStatus
+│   │                        CheckThenInsertIdempotentCanceller, LockingLookupIdempotentCanceller,
+│   │                        OrderLockingPaymentCanceller
+│   ├── domain               Payment, PaymentCancel, PaymentMethod, PaymentStatus, OrderIds
 │   │   └── exception        PaymentNotFoundException, PaymentMismatchException,
-│   │                        InvalidPaymentStatusException, CancelAmountExceededException
+│   │                        InvalidPaymentStatusException, CancelAmountExceededException,
+│   │                        OrderNotFoundException, DuplicateOrderException, InvalidOrderIdException
 │   └── infrastructure       PaymentRepository, PaymentCancelRepository, PaymentOwnership
 │       └── card             CardApprovalClient, CardApproval, FakeCardApprovalClient
 ├── wallet
@@ -66,6 +69,8 @@ com.sunm2n.pay
 - **`bootstrap` 은 조립하는 코드다.** 여러 업무를 엮는 빈 조합(`ConcurrencyStrategyConfig`), MVC 배선(`WebConfig`), 시드, 모든 업무의 예외를 HTTP 로 바꾸는 `ApiExceptionHandler` 가 여기 있다
 - 클래스가 없는 계층은 폴더를 만들지 않는다
 - **`idempotency` 는 최상위 패키지다 (S5).** 충전이 `operation=CHARGE` 로 재사용할 예정인데 `wallet` 은 `payment` 를 import 하지 못하므로 `payment` 아래에 둘 수 없다. 가맹점 범위와 멱등 예외를 아는 코드라 `common` 에도 넣지 않는다. 요청 fingerprint 의 **구성**(어떤 필드를 어떤 순서로)은 업무 쪽(`CancelFingerprint`)이 갖고, `idempotency` 에는 문자열 해시(`RequestHash`)만 둔다
+- **주문 id 형식 규칙은 `payment.domain.OrderIds` 한 곳에 둔다 (S6).** 생성 요청 DTO 의 `@Pattern` 과 주문 기반 API 의 경로 변수 검증이 같은 상수·메서드를 쓴다. `idempotency.IdempotencyKeys` 처럼 규칙과 거절 예외를 함께 둔다
+- **주문 기반 취소(`OrderLockingPaymentCanceller`)는 `PaymentCanceller` 를 구현하지 않는다 (S6).** 결제를 찾는 키가 다르고, 실패 버전과 개선 버전이 코드가 아니라 스키마(V5·V6·V7)로 갈리므로 전략 이음매가 필요 없다. `@Transactional` 프록시를 위해 `ConcurrencyStrategyConfig` 에 빈으로 둔다
 - 빈 이름은 클래스 단순 이름과 `@Bean` 메서드 이름에서 오므로 패키지를 옮겨도 바뀌지 않는다. `@Qualifier` 문자열은 패키지와 무관하다
 
 ## 3. 의존 방향
@@ -109,17 +114,18 @@ grep -rn 'import com.sunm2n.pay.idempotency' $B/common                          
 | 패키지 | 테스트 | 이유 |
 |---|---|---|
 | 루트 | `PaymentApplicationTests` | 컨텍스트 기동 |
-| `api` | `PaymentFlowApiTest`, `FailureContractApiTest`, `ApiInputValidationTest`, `RoutingContractApiTest`, `IdempotencyKeyHeaderServerTest` | HTTP 계약. 결제·지갑·인증을 함께 지난다. 멱등키 헤더의 컨테이너 전달은 내장 Tomcat 에서 본다 (S5) |
+| `api` | `PaymentFlowApiTest`, `FailureContractApiTest`, `ApiInputValidationTest`, `RoutingContractApiTest`, `IdempotencyKeyHeaderServerTest`, `OrderIdFormatApiTest`, `OrderPathServerTest` | HTTP 계약. 결제·지갑·인증을 함께 지난다. 멱등키 헤더(S5)와 인코딩된 주문 id 경로(S6)의 컨테이너 전달은 내장 Tomcat 에서 본다 |
+| `payment.domain` | `OrderIdsTest` | 주문 id 형식 규칙 (S6), 컨테이너 없이 돈다 |
 | `payment.application` | `PaymentServiceTest`, `CancelFingerprintTest` | 결제 전용 |
 | `idempotency` | `JdbcIdempotencyKeyStoreTest`, `IdempotencyKeysTest` | 키 저장소의 트랜잭션 계약·선점 판정, 헤더 값 규칙 (S5) |
 | `payment.application.confirmation` | `RetryPolicyTest` | 재시도 데코레이터 전용, 컨테이너 없이 돈다 |
 | `wallet.application` | `WalletServiceTest` | 지갑 전용 |
 | `wallet.domain` | `AmountBoundaryTest` | `Amounts` 오버플로 경계. 결제 서비스도 쓰지만 검증 대상은 지갑 잔액 산술이다 |
-| `concurrency` | `DuplicateConfirmReproductionTest`, `DuplicateConfirmRegressionTest`, `WalletLostUpdateReproductionTest`, `WalletDecrementComparisonTest`, `WalletLockRegressionTest`, `OptimisticLockConcurrencyTest`, `LockContentionObservationTest`, `OverRefundReproductionTest`, `CancelLockRegressionTest`, `FkPromotionDeadlockReproductionTest`, `FkDeadlockRegressionTest`, `LockWaitTimeoutObservationTest`, `CancelResendReproductionTest`, `CheckThenInsertReproductionTest`, `GapLockDeadlockReproductionTest`, `IdempotentCancelRegressionTest`, `IdempotentCancelConcurrencyTest`, `UniqueKeyWaiterDeadlockObservationTest` | S1~S5 재현·비교·회귀·관측. 승인·취소 구현과 지갑 전략을 조합해 쓴다 |
-| `schema` | `IsolationLevelTest`, `SchemaConstraintTest`, `LatestSchemaContextTest`, `V2SchemaContextTest`, `V4SchemaContextTest` | 스키마 전제. 최신·V2·V4 스키마를 각각 지킨다 |
-| `support` | 베이스 클래스, 게이트, 러너, 시드, 불변식, `LockWaitProbe` | 공통 도구 |
+| `concurrency` | `DuplicateConfirmReproductionTest`, `DuplicateConfirmRegressionTest`, `WalletLostUpdateReproductionTest`, `WalletDecrementComparisonTest`, `WalletLockRegressionTest`, `OptimisticLockConcurrencyTest`, `LockContentionObservationTest`, `OverRefundReproductionTest`, `CancelLockRegressionTest`, `FkPromotionDeadlockReproductionTest`, `FkDeadlockRegressionTest`, `LockWaitTimeoutObservationTest`, `CancelResendReproductionTest`, `CheckThenInsertReproductionTest`, `GapLockDeadlockReproductionTest`, `IdempotentCancelRegressionTest`, `IdempotentCancelConcurrencyTest`, `UniqueKeyWaiterDeadlockObservationTest`, `DuplicateOrderReproductionTest`, `UnindexedOrderLockReproductionTest`, `MerchantIndexOrderLockComparisonTest`, `MerchantIndexGapObservationTest`, `CompositeUniqueOrderLockRegressionTest`, `OrderCancelRegressionTest`, `OrderCancelConcurrencyTest`, `OrderUniquenessRegressionTest` | S1~S6 재현·비교·회귀·관측. 승인·취소 구현과 지갑 전략을 조합해 쓴다. S6 의 대기 행렬 시나리오 `OrderLockMatrix` 는 V5·V6·V7 테스트가 같은 코드로 기대만 바꿔 쓴다 |
+| `schema` | `IsolationLevelTest`, `SchemaConstraintTest`, `LatestSchemaContextTest`, `V2SchemaContextTest`, `V4SchemaContextTest`, `V5SchemaContextTest`, `V6SchemaContextTest`, `OrderUniqueMigrationRehearsalTest` | 스키마 전제. 최신·V2·V4·V5·V6 스키마를 각각 지킨다. V7 적용 전 정리 리허설은 Spring 없이 전용 DB 에 Flyway 를 직접 부른다 (S6) |
+| `support` | 베이스 클래스, 게이트, 러너, 시드, 불변식, `LockWaitProbe`, `BulkPaymentFixture` | 공통 도구. `LockWaitProbe` 는 S6 에서 선행 트랜잭션 하나의 락 집계·페이지 위치를 더했다 |
 
-### 5.1 스키마 버전별 베이스 (S4, S5)
+### 5.1 스키마 버전별 베이스 (S4, S5, S6)
 
 과거 실패 재현은 그 실험이 전제한 스키마 버전의 DB 에서 돈다 (SCENARIO 94행). 컨테이너는 하나(`MySqlTestContainer`)를 공유하고, 버전마다 데이터베이스를 따로 둔다. 과거 베이스는 `PastSchemaDatabase.register(registry, database, flywayTarget)` 한 줄로 등록한다 — 버전을 공유 static 상태로 두지 않아 컨텍스트 캐시 키가 버전별로 갈린다.
 
@@ -128,6 +134,8 @@ grep -rn 'import com.sunm2n.pay.idempotency' $B/common                          
 | `AbstractIntegrationTest` | 컨테이너 기본 DB, 전체 마이그레이션 | 본선 회귀·계약·서비스 테스트, S4 재현 |
 | `AbstractV2SchemaTest` | `payment_v2`, Flyway `target=2` | S1·S2·S2-a·S3 재현·비교 (`DuplicateConfirmReproductionTest`, `WalletLostUpdateReproductionTest`, `WalletDecrementComparisonTest`, `OptimisticLockConcurrencyTest`, `LockContentionObservationTest`, `OverRefundReproductionTest`), `V2SchemaContextTest` |
 | `AbstractV4SchemaTest` | `payment_v4`, Flyway `target=4` | S5 1·2차 재현 (`CheckThenInsertReproductionTest`, `GapLockDeadlockReproductionTest`), `V4SchemaContextTest`. 멱등키 검색 인덱스가 비유일이다. S7 의 RC 재실행도 여기서 |
+| `AbstractV5SchemaTest` | `payment_v5`, Flyway `target=5`, MockMvc 포함 | S6 0·0'·1 단계 (`DuplicateOrderReproductionTest`, `UnindexedOrderLockReproductionTest`), `V5SchemaContextTest`. payment 에 검색 인덱스가 없고 `order_id` 가 ai_ci 다. S7 의 인덱스 없는 실험도 여기서 |
+| `AbstractV6SchemaTest` | `payment_v6`, Flyway `target=6` | S6 2 단계 (`MerchantIndexOrderLockComparisonTest`, `MerchantIndexGapObservationTest`), `V6SchemaContextTest`. `merchant_id` 단일 인덱스(비유일) |
 
 모든 베이스가 `AbstractDatabaseTest` 의 정리 규약을 쓴다. Spring 컨텍스트는 베이스마다 따로 뜬다. **새 테스트는 "어느 스키마를 전제로 쓴 실험인가" 로 베이스를 고른다** — 결과가 우연히 같아도 과거 스키마 전제 실험은 과거 베이스를 쓴다 (`docs/plan/S4.md` 3.1).
 
