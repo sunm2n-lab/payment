@@ -16,7 +16,9 @@ import com.sunm2n.pay.wallet.application.WalletService;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Queue;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.BeforeEach;
@@ -47,6 +49,13 @@ class FkPromotionDeadlockReproductionTest extends AbstractIntegrationTest {
 
   private static final int WORKERS = 2;
   private static final String ORDER_ID = "order-s4";
+
+  /**
+   * 결제마다 다른 주문 id. 실험이 보려는 것(지갑 경합, FK 락)과 주문 id 는 무관하지만, S6 의 {@code (merchant_id, order_id)}
+   * unique 이후로는 같은 가맹점이 같은 주문으로 결제를 여러 개 만들 수 없다 ({@code docs/plan/S6.md} 1.1).
+   */
+  private final Map<String, String> orderIds = new ConcurrentHashMap<>();
+
   private static final long AMOUNT = 3_000L;
 
   /** 잔액 부족이 섞이지 않게 넉넉히 둔다. */
@@ -99,8 +108,7 @@ class FkPromotionDeadlockReproductionTest extends AbstractIntegrationTest {
             WORKERS,
             () -> {
               try {
-                return ledgerFirstDebitConfirmer.confirm(
-                    merchantId, queue.poll(), ORDER_ID, AMOUNT);
+                return confirm(ledgerFirstDebitConfirmer, queue.poll());
               } catch (RuntimeException e) {
                 failedAt.set(System.nanoTime());
                 throw e;
@@ -141,10 +149,7 @@ class FkPromotionDeadlockReproductionTest extends AbstractIntegrationTest {
     concurrencyGate.arm(ConcurrencyGate.LEDGER_INSERTED, WORKERS);
     ConcurrentRunner.Results<Payment> results =
         ConcurrentRunner.run(
-            WORKERS,
-            () ->
-                retryingLedgerFirstDebitConfirmer.confirm(
-                    merchantId, queue.poll(), ORDER_ID, AMOUNT));
+            WORKERS, () -> confirm(retryingLedgerFirstDebitConfirmer, queue.poll()));
 
     assertThat(results.failures()).isEmpty();
     assertThat(results.successCount()).isEqualTo(WORKERS);
@@ -167,9 +172,7 @@ class FkPromotionDeadlockReproductionTest extends AbstractIntegrationTest {
     // 원자적 감산은 잔액을 잠그지 않고 읽은 뒤 UPDATE → 원장 INSERT 순서다. 읽은 시점을 맞춰 동시에 출발시킨다.
     concurrencyGate.arm(ConcurrencyGate.WALLET_READ, WORKERS);
     ConcurrentRunner.Results<Payment> results =
-        ConcurrentRunner.run(
-            WORKERS,
-            () -> atomicDebitConfirmer.confirm(merchantId, queue.poll(), ORDER_ID, AMOUNT));
+        ConcurrentRunner.run(WORKERS, () -> confirm(atomicDebitConfirmer, queue.poll()));
 
     assertThat(results.failures()).isEmpty();
     assertThat(results.successCount()).isEqualTo(WORKERS);
@@ -183,12 +186,19 @@ class FkPromotionDeadlockReproductionTest extends AbstractIntegrationTest {
   private List<String> createPayments(int count) {
     List<String> paymentKeys = new ArrayList<>(count);
     for (int i = 0; i < count; i++) {
-      paymentKeys.add(
+      String orderId = ORDER_ID + "-" + (orderIds.size() + 1);
+      String paymentKey =
           paymentService
-              .create(merchantId, ORDER_ID, AMOUNT, PaymentMethod.MONEY, Seeds.MEMBER_ID_1)
-              .getPaymentKey());
+              .create(merchantId, orderId, AMOUNT, PaymentMethod.MONEY, Seeds.MEMBER_ID_1)
+              .getPaymentKey();
+      orderIds.put(paymentKey, orderId);
+      paymentKeys.add(paymentKey);
     }
     return paymentKeys;
+  }
+
+  private Payment confirm(PaymentConfirmer confirmer, String paymentKey) {
+    return confirmer.confirm(merchantId, paymentKey, orderIds.get(paymentKey), AMOUNT);
   }
 
   private int statusCount(String status) {

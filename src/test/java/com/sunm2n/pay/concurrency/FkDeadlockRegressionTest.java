@@ -3,12 +3,15 @@ package com.sunm2n.pay.concurrency;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.sunm2n.pay.payment.application.PaymentService;
+import com.sunm2n.pay.payment.domain.Payment;
 import com.sunm2n.pay.payment.domain.PaymentMethod;
 import com.sunm2n.pay.support.AbstractIntegrationTest;
 import com.sunm2n.pay.support.ConcurrencyGate;
 import com.sunm2n.pay.support.ConcurrentRunner;
 import com.sunm2n.pay.support.Seeds;
 import com.sunm2n.pay.wallet.application.WalletService;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -28,6 +31,13 @@ import org.springframework.beans.factory.annotation.Autowired;
 class FkDeadlockRegressionTest extends AbstractIntegrationTest {
 
   private static final String ORDER_ID = "order-s4r";
+
+  /**
+   * 결제마다 다른 주문 id. 실험이 보려는 것(지갑 경합, FK 락)과 주문 id 는 무관하지만, S6 의 {@code (merchant_id, order_id)}
+   * unique 이후로는 같은 가맹점이 같은 주문으로 결제를 여러 개 만들 수 없다 ({@code docs/plan/S6.md} 1.1).
+   */
+  private final Map<String, String> orderIds = new ConcurrentHashMap<>();
+
   private static final long AMOUNT = 3_000L;
   private static final long INITIAL_BALANCE = 100_000L;
   private static final long CHARGE_AMOUNT = 5_000L;
@@ -53,11 +63,7 @@ class FkDeadlockRegressionTest extends AbstractIntegrationTest {
 
     concurrencyGate.arm(ConcurrencyGate.WALLET_LOCK_ATTEMPT, 2);
     ConcurrentRunner.Results<Object> results =
-        ConcurrentRunner.run(
-            2,
-            () ->
-                paymentService.confirm(
-                    merchantId, turn.getAndIncrement() == 0 ? p1 : p2, ORDER_ID, AMOUNT));
+        ConcurrentRunner.run(2, () -> confirm(turn.getAndIncrement() == 0 ? p1 : p2));
 
     assertThat(results.failures()).as("데드락도, 잔액 부족도 없다").isEmpty();
     assertThat(results.successCount()).isEqualTo(2);
@@ -71,7 +77,7 @@ class FkDeadlockRegressionTest extends AbstractIntegrationTest {
   void allLedgerWritingPathsLockTheWalletFirst() {
     walletService.charge(Seeds.MEMBER_ID_1, INITIAL_BALANCE);
     String toCancel = created();
-    paymentService.confirm(merchantId, toCancel, ORDER_ID, AMOUNT);
+    confirm(toCancel);
     String toConfirm = created();
     AtomicInteger turn = new AtomicInteger();
 
@@ -83,7 +89,7 @@ class FkDeadlockRegressionTest extends AbstractIntegrationTest {
             3,
             () ->
                 switch (turn.getAndIncrement()) {
-                  case 0 -> paymentService.confirm(merchantId, toConfirm, ORDER_ID, AMOUNT);
+                  case 0 -> confirm(toConfirm);
                   case 1 -> walletService.charge(Seeds.MEMBER_ID_1, CHARGE_AMOUNT);
                   default -> paymentService.cancel(merchantId, toCancel, PARTIAL_CANCEL, "경쟁");
                 });
@@ -97,9 +103,17 @@ class FkDeadlockRegressionTest extends AbstractIntegrationTest {
   }
 
   private String created() {
-    return paymentService
-        .create(merchantId, ORDER_ID, AMOUNT, PaymentMethod.MONEY, Seeds.MEMBER_ID_1)
-        .getPaymentKey();
+    String orderId = ORDER_ID + "-" + (orderIds.size() + 1);
+    String paymentKey =
+        paymentService
+            .create(merchantId, orderId, AMOUNT, PaymentMethod.MONEY, Seeds.MEMBER_ID_1)
+            .getPaymentKey();
+    orderIds.put(paymentKey, orderId);
+    return paymentKey;
+  }
+
+  private Payment confirm(String paymentKey) {
+    return paymentService.confirm(merchantId, paymentKey, orderIds.get(paymentKey), AMOUNT);
   }
 
   private int payLedgerCount() {
