@@ -26,12 +26,16 @@ export function setup() {
       'API_KEY 환경변수가 필요하다. 예: k6 run -e API_KEY=mk_test_merchant_1 load/create-confirm.js',
     );
   }
+  // 실행마다 고유한 접두어. S6 의 (merchant_id, order_id) unique 이후로는 두 번째 실행이 같은 orderId 를 다시 만들면
+  // 409 DUPLICATE_ORDER 다. setup() 은 한 번만 돌고 반환값을 모든 VU 가 공유한다 - init 코드에서 만들면 VU 마다 달라진다.
+  return { run: Date.now().toString(36) };
 }
 
-export default function () {
+export default function (data) {
   const headers = { 'Content-Type': 'application/json', 'X-API-Key': API_KEY };
-  // VU 마다 고유한 orderId 를 만들어 결제끼리 경쟁하지 않게 한다.
-  const orderId = `k6-${__VU}-${__ITER}`;
+  // 실행·VU·반복마다 고유한 orderId 를 만들어 결제끼리 경쟁하지 않게 한다.
+  // 형식 규칙([A-Za-z0-9_-], 6~64자) 안이다 - 예: k6-mg2x1abc-37-120
+  const orderId = `k6-${data.run}-${__VU}-${__ITER}`;
 
   const createRes = http.post(
     `${BASE_URL}/v1/payments`,
