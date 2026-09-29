@@ -76,14 +76,15 @@ class FailureContractApiTest extends AbstractApiTest {
     @Test
     @DisplayName("다른 가맹점의 승인·취소는 404 이고 상태를 바꾸거나 카드사를 부르지 않는다")
     void otherMerchantsPaymentHasNoSideEffect() throws Exception {
-      String paymentKey = createPaymentKey(KEY, createBody("owned", AMOUNT, "CARD"));
-      confirmPayment(KEY, confirmBody(paymentKey, "owned", AMOUNT)).andExpect(status().isOk());
+      String paymentKey = createPaymentKey(KEY, createBody("order-owned", AMOUNT, "CARD"));
+      confirmPayment(KEY, confirmBody(paymentKey, "order-owned", AMOUNT))
+          .andExpect(status().isOk());
 
       // 소유권 위반은 "상태를 바꾼 뒤 404 를 주는" 회귀가 가장 위험하다. 직전·직후를 비교한다.
       assertRejectedWithoutSideEffect(
           () -> getPayment(OTHER_KEY, paymentKey), status().isNotFound(), "NOT_FOUND");
       assertRejectedWithoutSideEffect(
-          () -> confirmPayment(OTHER_KEY, confirmBody(paymentKey, "owned", AMOUNT)),
+          () -> confirmPayment(OTHER_KEY, confirmBody(paymentKey, "order-owned", AMOUNT)),
           status().isNotFound(),
           "NOT_FOUND");
       assertRejectedWithoutSideEffect(
@@ -124,7 +125,7 @@ class FailureContractApiTest extends AbstractApiTest {
     @DisplayName("금액이 0 이면 400")
     void zeroAmount() throws Exception {
       assertRejectedWithoutSideEffect(
-          () -> createPayment(KEY, createBody("zero", 0L, "CARD")),
+          () -> createPayment(KEY, createBody("order-zero", 0L, "CARD")),
           status().isBadRequest(),
           "INVALID_REQUEST");
     }
@@ -178,10 +179,11 @@ class FailureContractApiTest extends AbstractApiTest {
     @DisplayName("잔액이 부족하면 409 이고 아무것도 바뀌지 않는다")
     void insufficientBalance() throws Exception {
       chargeWallet(KEY, Seeds.MEMBER_ID_1, amountBody(5_000L)).andExpect(status().isOk());
-      String paymentKey = createPaymentKey(KEY, createMoneyBody("poor", AMOUNT, Seeds.MEMBER_ID_1));
+      String paymentKey =
+          createPaymentKey(KEY, createMoneyBody("order-poor", AMOUNT, Seeds.MEMBER_ID_1));
 
       assertRejectedWithoutSideEffect(
-          () -> confirmPayment(KEY, confirmBody(paymentKey, "poor", AMOUNT)),
+          () -> confirmPayment(KEY, confirmBody(paymentKey, "order-poor", AMOUNT)),
           status().isConflict(),
           "INSUFFICIENT_BALANCE");
     }
