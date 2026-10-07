@@ -34,5 +34,6 @@ public final class PastSchemaDatabase {
     registry.add("spring.datasource.password", MySqlTestContainer.MYSQL::getPassword);
     registry.add("spring.flyway.target", () -> flywayTarget);
     isolation.register(registry);
+    TestPool.register(registry);
   }
 }

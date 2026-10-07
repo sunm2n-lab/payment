@@ -10,15 +10,16 @@ import org.testcontainers.containers.MySQLContainer;
  *
  * <p>본선의 회귀·계약 테스트는 이 베이스를 쓴다. 과거 스키마를 전제로 쓴 재현은 {@link PastSchemaDatabase} 로 등록하는 버전별 베이스를 쓴다.
  *
- * <p>연결 정보는 서비스 연결이, 격리 수준은 Hikari 프로퍼티가 정한다. 본선의 격리 수준을 어디에 둘지는 S7 이 정하므로 {@code application.yml}
- * 은 건드리지 않는다.
+ * <p>연결 정보는 서비스 연결이, 격리 수준과 유휴 연결 수는 Hikari 프로퍼티가 정한다. 본선의 격리 수준을 어디에 둘지는 S7 이 정하므로 {@code
+ * application.yml} 은 건드리지 않는다.
  */
 public abstract class AbstractIntegrationTest extends AbstractDatabaseTest {
 
   @ServiceConnection protected static final MySQLContainer<?> MYSQL = MySqlTestContainer.MYSQL;
 
   @DynamicPropertySource
-  static void isolation(DynamicPropertyRegistry registry) {
+  static void hikari(DynamicPropertyRegistry registry) {
     TestIsolation.REPEATABLE_READ.register(registry);
+    TestPool.register(registry);
   }
 }
