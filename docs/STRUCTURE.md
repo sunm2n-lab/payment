@@ -127,15 +127,17 @@ grep -rn 'import com.sunm2n.pay.idempotency' $B/common                          
 
 ### 5.1 스키마 버전별 베이스 (S4, S5, S6)
 
-과거 실패 재현은 그 실험이 전제한 스키마 버전의 DB 에서 돈다 (SCENARIO 94행). 컨테이너는 하나(`MySqlTestContainer`)를 공유하고, 버전마다 데이터베이스를 따로 둔다. 과거 베이스는 `PastSchemaDatabase.register(registry, database, flywayTarget)` 한 줄로 등록한다 — 버전을 공유 static 상태로 두지 않아 컨텍스트 캐시 키가 버전별로 갈린다.
+과거 실패 재현은 그 실험이 전제한 스키마 버전의 DB 에서 돈다 (SCENARIO 94행). 컨테이너는 하나(`MySqlTestContainer`)를 공유하고, 버전마다 데이터베이스를 따로 둔다. 과거 베이스는 `PastSchemaDatabase.register(registry, database, flywayTarget, isolation)` 한 줄로 등록한다 — 버전을 공유 static 상태로 두지 않아 컨텍스트 캐시 키가 버전별로 갈린다.
 
-| 베이스 | DB | 쓰는 테스트 |
-|---|---|---|
-| `AbstractIntegrationTest` | 컨테이너 기본 DB, 전체 마이그레이션 | 본선 회귀·계약·서비스 테스트, S4 재현 |
-| `AbstractV2SchemaTest` | `payment_v2`, Flyway `target=2` | S1·S2·S2-a·S3 재현·비교 (`DuplicateConfirmReproductionTest`, `WalletLostUpdateReproductionTest`, `WalletDecrementComparisonTest`, `OptimisticLockConcurrencyTest`, `LockContentionObservationTest`, `OverRefundReproductionTest`), `V2SchemaContextTest` |
-| `AbstractV4SchemaTest` | `payment_v4`, Flyway `target=4` | S5 1·2차 재현 (`CheckThenInsertReproductionTest`, `GapLockDeadlockReproductionTest`), `V4SchemaContextTest`. 멱등키 검색 인덱스가 비유일이다. S7 의 RC 재실행도 여기서 |
-| `AbstractV5SchemaTest` | `payment_v5`, Flyway `target=5`, MockMvc 포함 | S6 0·0'·1 단계 (`DuplicateOrderReproductionTest`, `UnindexedOrderLockReproductionTest`), `V5SchemaContextTest`. payment 에 검색 인덱스가 없고 `order_id` 가 ai_ci 다. S7 의 인덱스 없는 실험도 여기서 |
-| `AbstractV6SchemaTest` | `payment_v6`, Flyway `target=6` | S6 2 단계 (`MerchantIndexOrderLockComparisonTest`, `MerchantIndexGapObservationTest`), `V6SchemaContextTest`. `merchant_id` 단일 인덱스(비유일) |
+**격리 수준도 베이스마다 명시한다** (S7 착수 전, `docs/plan/S7_PREP.md` 3절). 값은 `TestIsolation` 에 모으고, 컨텍스트의 Hikari 프로퍼티 `spring.datasource.hikari.transaction-isolation` 으로 등록한다. 세션 범위라 같은 컨테이너의 다른 컨텍스트로 새지 않는다. 컨테이너 전역 값(`SET GLOBAL`)이나 SQL 로 보내는 `SET SESSION` 은 쓰지 않는다. RC 베이스는 기존 베이스를 상속해 덮어쓰지 않고 형제 베이스로 만든다.
+
+| 베이스 | DB | 격리 수준 | 쓰는 테스트 |
+|---|---|---|---|
+| `AbstractIntegrationTest` | 컨테이너 기본 DB, 전체 마이그레이션 | REPEATABLE READ | 본선 회귀·계약·서비스 테스트, S4 재현 |
+| `AbstractV2SchemaTest` | `payment_v2`, Flyway `target=2` | REPEATABLE READ | S1·S2·S2-a·S3 재현·비교 (`DuplicateConfirmReproductionTest`, `WalletLostUpdateReproductionTest`, `WalletDecrementComparisonTest`, `OptimisticLockConcurrencyTest`, `LockContentionObservationTest`, `OverRefundReproductionTest`), `V2SchemaContextTest` |
+| `AbstractV4SchemaTest` | `payment_v4`, Flyway `target=4` | REPEATABLE READ | S5 1·2차 재현 (`CheckThenInsertReproductionTest`, `GapLockDeadlockReproductionTest`), `V4SchemaContextTest`. 멱등키 검색 인덱스가 비유일이다. S7 의 RC 재실행도 여기서 |
+| `AbstractV5SchemaTest` | `payment_v5`, Flyway `target=5`, MockMvc 포함 | REPEATABLE READ | S6 0·0'·1 단계 (`DuplicateOrderReproductionTest`, `UnindexedOrderLockReproductionTest`), `V5SchemaContextTest`. payment 에 검색 인덱스가 없고 `order_id` 가 ai_ci 다. S7 의 인덱스 없는 실험도 여기서 |
+| `AbstractV6SchemaTest` | `payment_v6`, Flyway `target=6` | REPEATABLE READ | S6 2 단계 (`MerchantIndexOrderLockComparisonTest`, `MerchantIndexGapObservationTest`), `V6SchemaContextTest`. `merchant_id` 단일 인덱스(비유일) |
 
 모든 베이스가 `AbstractDatabaseTest` 의 정리 규약을 쓴다. Spring 컨텍스트는 베이스마다 따로 뜬다. **새 테스트는 "어느 스키마를 전제로 쓴 실험인가" 로 베이스를 고른다** — 결과가 우연히 같아도 과거 스키마 전제 실험은 과거 베이스를 쓴다 (`docs/plan/S4.md` 3.1).
 

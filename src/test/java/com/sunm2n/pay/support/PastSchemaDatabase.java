@@ -15,17 +15,24 @@ import org.springframework.test.context.DynamicPropertyRegistry;
  *
  * <p>{@code ddl-auto: validate} 는 과거 컨텍스트에서도 유지한다. 엔티티가 과거 스키마에 없는 테이블·컬럼을 매핑하면 기동이 막히는데, S5 의 키
  * 저장소는 JDBC 전용이라 그런 엔티티가 생기지 않는다. 과거 엔티티 매핑이 그 스키마와 맞는지 계속 검증하는 쪽이 낫다.
+ *
+ * <p><b>격리 수준도 베이스가 넘긴다.</b> 기본값을 둔 오버로드를 만들지 않는다 — 실험의 전제이므로 베이스마다 눈에 보이게 적는다. RC 비교는 기존 베이스를 상속해
+ * 덮어쓰지 않고 형제 베이스로 만든다 ({@code docs/plan/S7_PREP.md} 2절).
  */
 public final class PastSchemaDatabase {
 
   private PastSchemaDatabase() {}
 
   public static void register(
-      DynamicPropertyRegistry registry, String database, String flywayTarget) {
+      DynamicPropertyRegistry registry,
+      String database,
+      String flywayTarget,
+      TestIsolation isolation) {
     String url = MySqlTestContainer.createDatabase(database);
     registry.add("spring.datasource.url", () -> url);
     registry.add("spring.datasource.username", MySqlTestContainer.MYSQL::getUsername);
     registry.add("spring.datasource.password", MySqlTestContainer.MYSQL::getPassword);
     registry.add("spring.flyway.target", () -> flywayTarget);
+    isolation.register(registry);
   }
 }

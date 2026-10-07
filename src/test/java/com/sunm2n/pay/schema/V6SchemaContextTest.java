@@ -3,6 +3,7 @@ package com.sunm2n.pay.schema;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.sunm2n.pay.support.AbstractV6SchemaTest;
+import com.sunm2n.pay.support.TestIsolation;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -46,5 +47,13 @@ class V6SchemaContextTest extends AbstractV6SchemaTest {
   @DisplayName("order_id 의 collation 은 아직 utf8mb4_0900_ai_ci 다")
   void orderIdStillIgnoresCase() {
     assertThat(PaymentSchema.orderIdCollation(jdbcTemplate)).isEqualTo("utf8mb4_0900_ai_ci");
+  }
+
+  @Test
+  @DisplayName("세션 격리 수준은 REPEATABLE-READ 다")
+  void sessionIsolationIsRepeatableRead() {
+    String isolation = jdbcTemplate.queryForObject("SELECT @@transaction_isolation", String.class);
+
+    assertThat(isolation).isEqualTo(TestIsolation.REPEATABLE_READ.sessionValue());
   }
 }

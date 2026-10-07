@@ -120,6 +120,8 @@ class MerchantIndexGapObservationTest extends AbstractV6SchemaTest {
   /**
    * 보조 인덱스 엔트리 {@code (merchantId, id)} 가 있는 페이지. 다른 트랜잭션에서 그 가맹점을 {@code FOR SHARE} 로 읽어 자기 락의
    * 페이지를 본 뒤 롤백한다. 선행이 쥔 락과는 갭락끼리라 기다리지 않는다 — A−1 스캔이 A 첫 엔트리에 거는 것은 갭락이다.
+   *
+   * <p>풀을 거치지 않는 연결이라 컨텍스트의 격리 수준을 받지 않는다. 위의 설명은 REPEATABLE READ 의 갭락에 기대므로 JDBC API 로 명시한다.
    */
   private long pageOfEntry(long merchantId, long id) {
     try (Connection root =
@@ -127,6 +129,7 @@ class MerchantIndexGapObservationTest extends AbstractV6SchemaTest {
             MySqlTestContainer.MYSQL.getJdbcUrl(),
             "root",
             MySqlTestContainer.MYSQL.getPassword())) {
+      root.setTransactionIsolation(Connection.TRANSACTION_REPEATABLE_READ);
       root.setAutoCommit(false);
       try (PreparedStatement read =
               root.prepareStatement(
