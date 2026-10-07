@@ -65,6 +65,7 @@ class FkDeadlockRegressionTest extends AbstractIntegrationTest {
     ConcurrentRunner.Results<Object> results =
         ConcurrentRunner.run(2, () -> confirm(turn.getAndIncrement() == 0 ? p1 : p2));
 
+    concurrencyGate.assertTripped(ConcurrencyGate.WALLET_LOCK_ATTEMPT);
     assertThat(results.failures()).as("데드락도, 잔액 부족도 없다").isEmpty();
     assertThat(results.successCount()).isEqualTo(2);
     assertThat(payLedgerCount()).isEqualTo(2);
@@ -94,6 +95,7 @@ class FkDeadlockRegressionTest extends AbstractIntegrationTest {
                   default -> paymentService.cancel(merchantId, toCancel, PARTIAL_CANCEL, "경쟁");
                 });
 
+    concurrencyGate.assertTripped(ConcurrencyGate.WALLET_LOCK_ATTEMPT);
     assertThat(results.failures()).isEmpty();
     assertThat(results.successCount()).isEqualTo(3);
     assertThat(balanceOf(Seeds.MEMBER_ID_1))

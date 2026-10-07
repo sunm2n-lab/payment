@@ -54,6 +54,7 @@ class DuplicateConfirmRegressionTest extends AbstractIntegrationTest {
     concurrencyGate.arm(ConcurrencyGate.PAYMENT_READ, WORKERS);
     ConcurrentRunner.Results<Payment> results = confirmConcurrently(paymentKey);
 
+    concurrencyGate.assertTripped(ConcurrencyGate.PAYMENT_READ);
     assertSingleWinner(results);
     assertThat(fakeCardApprovalClient.getApproveCount()).as("외부 승인은 결제 1건에 한 번뿐이다").isEqualTo(1);
     assertThat(currentStatus(paymentKey)).isEqualTo("DONE");
@@ -69,6 +70,7 @@ class DuplicateConfirmRegressionTest extends AbstractIntegrationTest {
     concurrencyGate.arm(ConcurrencyGate.PAYMENT_READ, WORKERS);
     ConcurrentRunner.Results<Payment> results = confirmConcurrently(paymentKey);
 
+    concurrencyGate.assertTripped(ConcurrencyGate.PAYMENT_READ);
     assertSingleWinner(results);
     assertThat(balanceOf(Seeds.MEMBER_ID_1)).isEqualTo(INITIAL_BALANCE - AMOUNT);
     assertThat(payLedgerCount(paymentKey)).as("PAY 원장은 한 건이다").isEqualTo(1);

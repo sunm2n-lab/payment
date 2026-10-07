@@ -56,6 +56,7 @@ class CancelLockRegressionTest extends AbstractIntegrationTest {
         ConcurrentRunner.run(
             2, () -> paymentService.cancel(merchantId, paymentKey, PARTIAL_CANCEL, "경쟁"));
 
+    concurrencyGate.assertTripped(ConcurrencyGate.PAYMENT_LOCK_ATTEMPT);
     assertThat(results.successCount()).isEqualTo(1);
     assertThat(results.failuresOf(CancelAmountExceededException.class))
         .as("잠근 뒤 읽은 현재 값이라 예외의 잔여 금액도 사실이다")
@@ -85,6 +86,7 @@ class CancelLockRegressionTest extends AbstractIntegrationTest {
         ConcurrentRunner.run(
             2, () -> paymentService.cancel(merchantId, paymentKey, PARTIAL_CANCEL, "경쟁"));
 
+    concurrencyGate.assertTripped(ConcurrencyGate.PAYMENT_LOCK_ATTEMPT);
     assertThat(results.successCount()).isEqualTo(1);
     assertThat(results.failuresOf(CancelAmountExceededException.class)).hasSize(1);
     assertThat(results.failuresOtherThan(CancelAmountExceededException.class)).isEmpty();
@@ -115,6 +117,7 @@ class CancelLockRegressionTest extends AbstractIntegrationTest {
                     ? paymentService.cancel(merchantId, refunded, 2_000L, "환불")
                     : paymentService.confirm(merchantId, debited, "order-s3r-3b", 3_000L));
 
+    concurrencyGate.assertTripped(ConcurrencyGate.WALLET_LOCK_ATTEMPT);
     assertThat(results.failures()).isEmpty();
     assertThat(results.successCount()).isEqualTo(2);
     assertThat(statusOf(debited)).isEqualTo(PaymentStatus.DONE.name());
@@ -143,6 +146,7 @@ class CancelLockRegressionTest extends AbstractIntegrationTest {
                     turn.getAndIncrement() == 0 ? AMOUNT : PARTIAL_CANCEL,
                     "경쟁"));
 
+    concurrencyGate.assertTripped(ConcurrencyGate.PAYMENT_LOCK_ATTEMPT);
     assertThat(results.successCount()).isEqualTo(1);
     assertThat(results.failureCount()).isEqualTo(1);
     Payment winner = results.successes().get(0);

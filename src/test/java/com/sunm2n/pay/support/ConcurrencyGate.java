@@ -148,6 +148,19 @@ public class ConcurrencyGate {
     throw new IllegalStateException("'" + name + "' 은 barrier 로 무장되지 않았다");
   }
 
+  /**
+   * barrier 로 무장한 지점이 실제로 열렸는지 단언한다. 실행이 끝난 뒤, 결과 단언보다 <b>먼저</b> 부른다.
+   *
+   * <p>참가자가 일부만 도착하면 도착한 쪽이 상한에서 실패하므로 이미 드러난다. 이 단언이 잡는 것은 <b>아무도 도착하지 않은</b> 경우다 — 잠금 조회가 빠져 지점을
+   * 지나지 않으면 워커는 그냥 지나가고, 결과는 동기화가 아니라 우연한 경합에서 나온다 ({@code docs/plan/S7_PREP.md} 4.4).
+   */
+  public void assertTripped(String name) {
+    if (trippedAtNanos(name).isEmpty()) {
+      throw new AssertionError(
+          "게이트 '" + name + "' 가 열리지 않았다 - 참가자가 지점에 도착하지 않았다. 결과는 동기화 없이 나온 것이다");
+    }
+  }
+
   /** 무장된 게이트라면 다른 참가자를 기다린다. 무장 전이거나 이미 통과한 스레드면 그냥 돌아간다. */
   public void pass(String name) {
     Point gate = gates.get(name);

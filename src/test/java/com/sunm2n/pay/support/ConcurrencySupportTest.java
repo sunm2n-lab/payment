@@ -124,6 +124,27 @@ class ConcurrencySupportTest {
   }
 
   @Test
+  @DisplayName("도달 단언은 아무도 오지 않은 게이트에서 실패하고, 열린 게이트에서는 통과한다")
+  void assertTrippedDetectsGateNobodyReached() {
+    ConcurrencyGate gate = new ConcurrencyGate();
+    gate.arm(ConcurrencyGate.PAYMENT_READ, WORKERS);
+    gate.arm(ConcurrencyGate.WALLET_READ, WORKERS);
+
+    ConcurrentRunner.run(
+        WORKERS,
+        () -> {
+          gate.pass(ConcurrencyGate.PAYMENT_READ);
+          return "done";
+        });
+
+    assertThatCode(() -> gate.assertTripped(ConcurrencyGate.PAYMENT_READ))
+        .doesNotThrowAnyException();
+    assertThatThrownBy(() -> gate.assertTripped(ConcurrencyGate.WALLET_READ))
+        .isInstanceOf(AssertionError.class)
+        .hasMessageContaining("열리지 않았다");
+  }
+
+  @Test
   @DisplayName("해제한 게이트는 다시 무장 전 상태가 된다")
   void resetDisarmsGate() {
     ConcurrencyGate gate = new ConcurrencyGate();
