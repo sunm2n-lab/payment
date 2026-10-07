@@ -3,7 +3,9 @@ package com.sunm2n.pay.support;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -35,6 +37,12 @@ public final class ConcurrentRunner {
   /** 취소에도 끝나지 않은 워커가 있었다면 그 사유. 한 번 설정되면 이 JVM 에서는 되돌리지 않는다. */
   private static volatile String runaway;
 
+  /**
+   * 출발했지만 종료를 확인하지 못한 실행. 작업을 <b>제출하기 전</b>에 넣고, 워커 전부의 실제 종료를 확인한 뒤에 뺀다 — 아직 본문에 들어가지 않은 작업도 여기
+   * 있다. 취소 뒤에도 끝나지 않은 실행은 빼지 않는다.
+   */
+  private static final Set<Running<?>> unfinished = ConcurrentHashMap.newKeySet();
+
   private ConcurrentRunner() {}
 
   public static <T> Results<T> run(int workers, Callable<T> task) {
@@ -59,28 +67,56 @@ public final class ConcurrentRunner {
     ExecutorService pool = Executors.newFixedThreadPool(workers);
     CountDownLatch start = new CountDownLatch(1);
     List<Future<T>> futures = new ArrayList<>(workers);
-    for (int i = 0; i < workers; i++) {
-      futures.add(
-          pool.submit(
-              () -> {
-                start.await();
-                return task.call();
-              }));
+    Running<T> running = new Running<>(pool, workers, timeout, futures);
+    unfinished.add(running);
+    try {
+      for (int i = 0; i < workers; i++) {
+        futures.add(
+            pool.submit(
+                () -> {
+                  start.await();
+                  return task.call();
+                }));
+      }
+    } catch (RuntimeException e) {
+      // 제출한 워커는 start 에서 기다리는 중이라 본문에 들어가지 않았다. 끝까지 확인한 뒤에만 등록을 푼다.
+      pool.shutdownNow();
+      cancelAndConfirmStopped(pool, workers);
+      if (pool.isTerminated()) {
+        unfinished.remove(running);
+      }
+      throw e;
     }
     start.countDown();
     pool.shutdown();
-    return new Running<>(pool, workers, timeout, System.nanoTime() + timeout.toNanos(), futures);
+    running.startClock();
+    return running;
   }
 
   /**
    * 살아남은 워커가 있었는지 확인한다. 있으면 공유 DB 의 상태를 믿을 수 없으므로 진행하지 않는다.
    *
-   * <p>매 테스트 전 정리 규약이 TRUNCATE 보다 먼저 호출한다. 뒤늦게 커밋하는 워커와 다음 테스트의 정리가 겹치면, 원인이 앞 테스트에 있는데 다른 테스트가 깨져
-   * 추적이 어려워진다. 그렇게 만드는 대신 여기서 멈춘다.
+   * <p>러너가 출발할 때 호출한다. 정상 실행 중인 다른 러너는 거절 사유가 아니다 — 선행을 붙잡아 둔 채 추가 작업을 보내는 관측이 있다 ({@link
+   * HeldRun.Side}). 테스트 경계에서는 {@link #verifyNoUnfinishedRuns()} 를 쓴다.
    */
   public static void verifyNoRunawayWorkers() {
     if (runaway != null) {
       throw new IllegalStateException("앞선 동시 실행의 워커가 끝나지 않아 공유 DB 를 신뢰할 수 없다: " + runaway);
+    }
+  }
+
+  /**
+   * 테스트 경계의 검사. runaway 와 함께 <b>종료를 확인하지 못한 실행</b>이 남았는지 본다.
+   *
+   * <p>매 테스트 전 정리 규약이 TRUNCATE 보다 먼저 호출한다. 앞 테스트의 워커가 뒤늦게 커밋하면 다음 테스트의 정리와 겹쳐, 원인이 앞 테스트에 있는데 다른
+   * 테스트가 깨진다. 그렇게 만드는 대신 여기서 멈춘다. 이미 끝난 실행은 종료 확인을 받지 않았어도 남은 워커가 없으므로 지나간다.
+   */
+  public static void verifyNoUnfinishedRuns() {
+    verifyNoRunawayWorkers();
+    unfinished.removeIf(Running::isDone);
+    if (!unfinished.isEmpty()) {
+      throw new IllegalStateException(
+          "앞 테스트의 동시 실행 " + unfinished.size() + "건이 끝나지 않았다. 공유 DB 를 정리하지 않는다: " + unfinished);
     }
   }
 
@@ -110,22 +146,25 @@ public final class ConcurrentRunner {
     private final ExecutorService pool;
     private final int workers;
     private final Duration timeout;
-    private final long deadlineNanos;
     private final List<Future<T>> futures;
+    private long deadlineNanos;
     private Results<T> results;
     private RuntimeException failure;
 
-    private Running(
-        ExecutorService pool,
-        int workers,
-        Duration timeout,
-        long deadlineNanos,
-        List<Future<T>> futures) {
+    private Running(ExecutorService pool, int workers, Duration timeout, List<Future<T>> futures) {
       this.pool = pool;
       this.workers = workers;
       this.timeout = timeout;
-      this.deadlineNanos = deadlineNanos;
       this.futures = futures;
+    }
+
+    private synchronized void startClock() {
+      deadlineNanos = System.nanoTime() + timeout.toNanos();
+    }
+
+    @Override
+    public String toString() {
+      return "워커 " + workers + "개 (상한 " + timeout.toSeconds() + "초)";
     }
 
     /** 워커가 모두 끝났는가. 기다리지 않는다. */
@@ -155,6 +194,9 @@ public final class ConcurrentRunner {
         throw e;
       } finally {
         cancelAndConfirmStopped(pool, workers);
+        if (pool.isTerminated()) {
+          unfinished.remove(this);
+        }
       }
       results = collect(futures);
       return results;

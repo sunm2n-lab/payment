@@ -349,7 +349,7 @@ class ConcurrencySupportTest {
                     .satisfies(s -> assertThat(s).hasMessageContaining("끝나지 않았다")));
 
     assertThat(alive.get()).as("살아 있는 워커").isZero();
-    assertThatCode(ConcurrentRunner::verifyNoRunawayWorkers).doesNotThrowAnyException();
+    assertThatCode(ConcurrentRunner::verifyNoUnfinishedRuns).doesNotThrowAnyException();
   }
 
   @Test
@@ -400,9 +400,63 @@ class ConcurrencySupportTest {
 
     assertThat(sides.get()).allSatisfy(running -> assertThat(running.isDone()).isTrue());
     assertThat(alive.get()).as("살아 있는 워커").isZero();
-    assertThatCode(ConcurrentRunner::verifyNoRunawayWorkers)
+    assertThatCode(ConcurrentRunner::verifyNoUnfinishedRuns)
         .as("취소에 응답한 워커는 runaway 가 아니다")
         .doesNotThrowAnyException();
+  }
+
+  // --- 테스트 경계의 미종료 실행 검사 (docs/plan/S7_PREP.md 4.3) ---
+
+  @Test
+  @DisplayName("다른 실행이 진행 중이어도 러너는 출발한다 - 출발 검사는 runaway 만 본다")
+  void runnerStartsWhileAnotherRunIsInFlight() {
+    CountDownLatch hold = new CountDownLatch(1);
+    Running<String> first = ConcurrentRunner.start(1, awaiting(hold));
+    try {
+      Results<String> second = ConcurrentRunner.run(1, () -> "추가");
+
+      assertThat(second.successes()).containsExactly("추가");
+    } finally {
+      hold.countDown();
+      first.await();
+    }
+  }
+
+  @Test
+  @DisplayName("종료를 확인하지 않은 실행이 남아 있으면 경계 검사가 실패하고, 끝난 뒤에는 통과한다")
+  void boundaryCheckFailsWhileRunIsUnfinished() {
+    CountDownLatch hold = new CountDownLatch(1);
+    Running<String> running = ConcurrentRunner.start(2, awaiting(hold));
+    try {
+      assertThatThrownBy(ConcurrentRunner::verifyNoUnfinishedRuns)
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("끝나지 않았다");
+    } finally {
+      hold.countDown();
+      running.await();
+    }
+
+    assertThatCode(ConcurrentRunner::verifyNoUnfinishedRuns).doesNotThrowAnyException();
+  }
+
+  @Test
+  @DisplayName("스스로 끝난 실행은 종료 확인을 받지 않았어도 경계 검사를 막지 않는다")
+  void boundaryCheckIgnoresRunThatAlreadyFinished() throws InterruptedException {
+    Running<String> running = ConcurrentRunner.start(1, () -> "done");
+    long deadline = System.nanoTime() + WORKER_STOP_GRACE.toNanos();
+    while (!running.isDone() && System.nanoTime() < deadline) {
+      Thread.sleep(10);
+    }
+
+    assertThat(running.isDone()).isTrue();
+    assertThatCode(ConcurrentRunner::verifyNoUnfinishedRuns).doesNotThrowAnyException();
+  }
+
+  private static Callable<String> awaiting(CountDownLatch latch) {
+    return () -> {
+      latch.await();
+      return "done";
+    };
   }
 
   private static String passHold(ConcurrencyGate gate) {
