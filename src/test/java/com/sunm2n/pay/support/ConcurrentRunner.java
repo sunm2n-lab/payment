@@ -42,32 +42,34 @@ public final class ConcurrentRunner {
   }
 
   public static <T> Results<T> run(int workers, Duration timeout, Callable<T> task) {
+    return start(workers, timeout, task).await();
+  }
+
+  /**
+   * 워커를 출발시키고 기다리지 않고 돌아온다. 테스트 스레드가 워커를 붙잡아 둔 채 관측해야 할 때 쓴다 ({@link HeldRun}).
+   *
+   * <p>종료 확인은 {@link Running#await()} 가 한다. 상한은 출발 시점부터 잰다 — {@link #run} 과 같다.
+   */
+  public static <T> Running<T> start(int workers, Callable<T> task) {
+    return start(workers, TIMEOUT, task);
+  }
+
+  static <T> Running<T> start(int workers, Duration timeout, Callable<T> task) {
     verifyNoRunawayWorkers();
     ExecutorService pool = Executors.newFixedThreadPool(workers);
     CountDownLatch start = new CountDownLatch(1);
     List<Future<T>> futures = new ArrayList<>(workers);
-    try {
-      for (int i = 0; i < workers; i++) {
-        futures.add(
-            pool.submit(
-                () -> {
-                  start.await();
-                  return task.call();
-                }));
-      }
-      start.countDown();
-      pool.shutdown();
-      if (!pool.awaitTermination(timeout.toMillis(), TimeUnit.MILLISECONDS)) {
-        throw new IllegalStateException(
-            "워커 " + workers + "개가 " + timeout.toSeconds() + "초 안에 끝나지 않았다");
-      }
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-      throw new IllegalStateException("동시 실행 대기 중 인터럽트", e);
-    } finally {
-      cancelAndConfirmStopped(pool, workers);
+    for (int i = 0; i < workers; i++) {
+      futures.add(
+          pool.submit(
+              () -> {
+                start.await();
+                return task.call();
+              }));
     }
-    return collect(futures);
+    start.countDown();
+    pool.shutdown();
+    return new Running<>(pool, workers, timeout, System.nanoTime() + timeout.toNanos(), futures);
   }
 
   /**
@@ -95,6 +97,67 @@ public final class ConcurrentRunner {
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
       runaway = "워커 종료를 확인하는 중 인터럽트되었다";
+    }
+  }
+
+  /**
+   * 출발한 워커 묶음. {@link #await()} 가 상한 안의 종료를 기다리고, 넘기면 취소한 뒤 실제 종료까지 확인한다.
+   *
+   * <p>{@code await} 를 다시 부르면 처음 결과를 그대로 돌려준다. 관측 헬퍼가 정리하며 기다린 작업의 결과를 테스트가 이어서 읽는다.
+   */
+  public static final class Running<T> {
+
+    private final ExecutorService pool;
+    private final int workers;
+    private final Duration timeout;
+    private final long deadlineNanos;
+    private final List<Future<T>> futures;
+    private Results<T> results;
+    private RuntimeException failure;
+
+    private Running(
+        ExecutorService pool,
+        int workers,
+        Duration timeout,
+        long deadlineNanos,
+        List<Future<T>> futures) {
+      this.pool = pool;
+      this.workers = workers;
+      this.timeout = timeout;
+      this.deadlineNanos = deadlineNanos;
+      this.futures = futures;
+    }
+
+    /** 워커가 모두 끝났는가. 기다리지 않는다. */
+    public boolean isDone() {
+      return pool.isTerminated();
+    }
+
+    public synchronized Results<T> await() {
+      if (results != null) {
+        return results;
+      }
+      if (failure != null) {
+        throw failure;
+      }
+      try {
+        long remaining = Math.max(0, deadlineNanos - System.nanoTime());
+        if (!pool.awaitTermination(remaining, TimeUnit.NANOSECONDS)) {
+          throw new IllegalStateException(
+              "워커 " + workers + "개가 " + timeout.toSeconds() + "초 안에 끝나지 않았다");
+        }
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        failure = new IllegalStateException("동시 실행 대기 중 인터럽트", e);
+        throw failure;
+      } catch (RuntimeException e) {
+        failure = e;
+        throw e;
+      } finally {
+        cancelAndConfirmStopped(pool, workers);
+      }
+      results = collect(futures);
+      return results;
     }
   }
 
