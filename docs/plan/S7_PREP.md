@@ -334,3 +334,164 @@ S7 의 코드를 쓰기 전에 아래 표의 **RC 예측**과 **근거**를 채�
 - **S6 은 같은 조건의 `UPDATE` 문을 만들지 않았다** (`phase1/S6.md` 8절). semi-consistent read 를 `SELECT ... FOR UPDATE` 와 비교하려면 S7 이 만든다
 - **7절의 예측**이 S7 기록의 비교 대상이다
 - **6절에서 예측으로 바꾼 주장도 검증 목록으로 넘긴다.** `docs/plan/S7.md` 에 S1 중복 승인, S2 Lost Update, S3 두 재현(초과 취소·환불과 지갑 갱신의 충돌), S5 check-then-insert 의 RC 재실행을 명시한다. 각 실험의 RR 스키마·데이터·워커 수·동기화 조건을 유지해 비교한다. 7절의 CAS 재조회나 갭락 실험으로 이 검증을 대신하지 않는다
+
+## 12. 실행 결과
+
+> 아래 수치는 **2026-10-14, 커밋 `fb23852`(이 정비의 마지막 구현 커밋)** 에서 다시 잰 값이다. 같은 검증을 2026-10-07 에도 돌려 같은 결과를 봤지만, 그때 로그를 저장소 밖(임시 디렉터리)에만 두어 근거가 남지 않았다. 그래서 다시 돌려 여기에 남긴다. 변이와 runaway 검증은 모두 `git worktree` 복사본에서 했고 작업 트리는 건드리지 않았다.
+
+### 12.1 커밋 메시지에 남긴 것
+
+| 커밋 | 검증 |
+|---|---|
+| `9668cd9` | 배선 — V6 베이스만 `READ_COMMITTED` 로 바꾸면 V6 전제 단언만 실패하고 최신 컨텍스트의 `IsolationLevelTest` 는 통과한다 |
+| `a1faa90` | 연결 수 — `Max_used_connections` 72 → 36, 벽시계 91초 → 89초. 대기 시간 단언 두 클래스 3회 통과 |
+| `76ba97b` | 헬퍼 변이 — 옛 손코딩 패턴 3개 실패, 정리 중단 1개 실패 |
+
+### 12.2 S5·S6 반복
+
+`./gradlew test --rerun` 에 아래 12개 클래스를 `--tests` 로 주고 5회 실행했다.
+
+`CheckThenInsertReproductionTest`, `CompositeUniqueOrderLockRegressionTest`, `DuplicateOrderReproductionTest`, `GapLockDeadlockReproductionTest`, `IdempotentCancelConcurrencyTest`, `IdempotentCancelRegressionTest`, `MerchantIndexGapObservationTest`, `MerchantIndexOrderLockComparisonTest`, `OrderCancelConcurrencyTest`, `OrderCancelRegressionTest`, `UnindexedOrderLockReproductionTest`, `UniqueKeyWaiterDeadlockObservationTest`
+
+| 회차 | 테스트 | 실패 |
+|---|---|---|
+| 1~5 | 83 | 0 (5회 모두) |
+
+`UniqueKeyWaiterDeadlockObservationTest` 의 분포(5회째 출력): 다섯 round 모두 성공 1, 1213 1 — S5 5.6 의 RR 실측과 같다.
+
+### 12.3 게이트 변이 (1.1 재실행)
+
+```diff
+# PessimisticLockPaymentCanceller.java 45행
+-            .findByIdForUpdate(paymentId)
++            .findById(paymentId)
+# PessimisticLockWalletBalanceUpdater.java 73행
+-        .findByIdForUpdate(walletId)
++        .findById(walletId)
+```
+
+`DuplicateConfirmRegressionTest`, `WalletLockRegressionTest`, `CancelLockRegressionTest`, `FkDeadlockRegressionTest`, `IdempotentCancelConcurrencyTest`, `OrderCancelConcurrencyTest` 를 실행했다. 20개 중 **10개 실패**. 1.1 의 대상 16개(`DuplicateConfirmRegressionTest` 4개를 뺀 것)로 보면 1.1 과 같은 10개다. `DuplicateConfirmRegressionTest` 4개는 통과한다 — 게이트가 잠그지 않는 조회(`PAYMENT_READ`)이고 S1 의 CAS 가 막는다.
+
+| 실패 | 개수 | 실패 메시지 |
+|---|---|---|
+| `CancelLock` 회귀 1·2·3·4, `FkDeadlock` 회귀 1·2, `WalletLock` 회귀 2 | 7 | **게이트 '…-lock-attempt' 가 열리지 않았다** (4.4 의 단언) |
+| `WalletLock` 회귀 1 | 1 | 성공 수 불일치. 게이트가 `PAYMENT_READ` 라 변이와 무관하게 열린다 — 결과 단언이 잡는 것이 맞다 |
+| `OrderCancelConcurrency` 회귀 6 두 개 | 2 | 결과 단언. hold 를 쓰는 테스트라 4.4 의 대상이 아니다 |
+
+### 12.4 관측 실패 전파
+
+`OrderCancelConcurrencyTest.orderCancelFirst` 의 대기자 기대를 일부러 틀리게 주고(`awaitWaiters(database, "payment", 1)` → `2`) **전체**를 돌렸다. 워커는 해제·취소에 응답한다.
+
+| 기준 | 전체 | 실패 | 실패 메시지 |
+|---|---|---|---|
+| 정비 전 `4262276` | 329 | **1** (그 테스트만) | `test.payment 의 락 대기자가 10초 안에 2명이 되지 않았다 (마지막 1명)` |
+| 정비 후 `fb23852` | 343 | **1** (그 테스트만) | 같은 메시지 + `Suppressed: hold 'order-locked' 가 10초 안에 release 되지 않았다` |
+
+- 기준(실패는 그 테스트 하나)은 충족한다
+- **이 시나리오로는 전파를 막았다는 것을 보이지 못했다.** 정비 전에도 번지지 않았다. 풀린 워커가 곧바로 끝나 다음 테스트의 TRUNCATE 와 겹치지 않았기 때문이다. 차이는 정비 후에 선행 워커의 실패가 suppressed 로 남는다는 것이다 — 정비 전에는 `join` 을 건너뛰어 사라졌다
+- 늦게 끝나는 워커가 남는 경우는 12.5 와 `ConcurrencySupportTest` 의 헬퍼·경계 검사 테스트가 다룬다
+
+### 12.5 종료 불가 경로 (별도 JVM)
+
+아래 테스트를 복사본의 `src/test/java/com/sunm2n/pay/support/` 에 두고 `./gradlew test --tests '*RunawayVerificationTest'` 로 그 클래스만 돌렸다. 워커는 인터럽트를 삼켜 취소에 응답하지 않는다.
+
+| 확인 | 결과 |
+|---|---|
+| 최초 실패 보존 | 던져진 것은 관측의 `AssertionError: 최초 실패`. suppressed 에 `워커 1개가 1초 안에 끝나지 않았다` |
+| runaway 기록 | `verifyNoRunawayWorkers` 가 `취소 요청 뒤에도` 로 실패. 러너 출발도 막힌다 |
+| 후속 DB 작업 차단 | 다음 테스트가 `@BeforeEach` 에서 `앞선 동시 실행의 워커가 끝나지 않아 공유 DB 를 신뢰할 수 없다: 워커 1개가 취소 요청 뒤에도 5초 안에 끝나지 않았다` 로 실패 (의도한 동작) |
+| 검증 뒤 해제 | `@AfterAll` 에서 풀어 준 뒤 살아 있는 워커 0 |
+
+<details>
+<summary><code>RunawayVerificationTest.java</code></summary>
+
+```java
+package com.sunm2n.pay.support;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import java.time.Duration;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.MethodOrderer;
+import org.junit.jupiter.api.Order;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestMethodOrder;
+
+/** 별도 JVM 전용 검증 (docs/plan/S7_PREP.md 10절 "종료 불가 경로"). 저장소의 테스트 소스에는 넣지 않는다. */
+@TestMethodOrder(MethodOrderer.OrderAnnotation.class)
+class RunawayVerificationTest extends AbstractIntegrationTest {
+
+  static final AtomicBoolean letGo = new AtomicBoolean();
+  static final AtomicInteger alive = new AtomicInteger();
+
+  @Test
+  @Order(1)
+  void runawayKeepsFirstFailureAndBlocksLaterDbWork() {
+    AssertionError first = new AssertionError("최초 실패");
+    assertThatThrownBy(
+            () ->
+                HeldRun.run(
+                    concurrencyGate,
+                    ConcurrencyGate.ORDER_LOCKED,
+                    1,
+                    Duration.ofSeconds(1),
+                    () -> {
+                      concurrencyGate.pass(ConcurrencyGate.ORDER_LOCKED);
+                      alive.incrementAndGet();
+                      try {
+                        // 인터럽트를 삼켜 취소에 응답하지 않는다
+                        while (!letGo.get()) {
+                          try {
+                            Thread.sleep(50);
+                          } catch (InterruptedException ignored) {
+                          }
+                        }
+                        return "끝";
+                      } finally {
+                        alive.decrementAndGet();
+                      }
+                    },
+                    side -> {
+                      throw first;
+                    }))
+        .isSameAs(first)
+        .satisfies(
+            e -> {
+              System.out.println("[runaway] thrown=" + e);
+              for (Throwable s : e.getSuppressed()) {
+                System.out.println("[runaway] suppressed=" + s);
+              }
+              assertThat(e.getSuppressed())
+                  .anySatisfy(s -> assertThat(s).hasMessageContaining("끝나지 않았다"));
+            });
+
+    assertThat(alive.get()).as("워커는 아직 살아 있다").isEqualTo(1);
+    assertThatThrownBy(ConcurrentRunner::verifyNoRunawayWorkers)
+        .hasMessageContaining("취소 요청 뒤에도");
+    assertThatThrownBy(() -> ConcurrentRunner.start(1, () -> "x"))
+        .as("러너 출발도 막힌다")
+        .hasMessageContaining("신뢰할 수 없다");
+  }
+
+  @Test
+  @Order(2)
+  void laterDbTestIsBlockedAtBoundary() {
+    throw new AssertionError("@BeforeEach 가 막았어야 여기 오지 않는다");
+  }
+
+  @AfterAll
+  static void release() throws InterruptedException {
+    letGo.set(true);
+    long deadline = System.nanoTime() + Duration.ofSeconds(5).toNanos();
+    while (alive.get() > 0 && System.nanoTime() < deadline) {
+      Thread.sleep(10);
+    }
+    System.out.println("[runaway] alive after release=" + alive.get());
+  }
+}
+```
+
+</details>
