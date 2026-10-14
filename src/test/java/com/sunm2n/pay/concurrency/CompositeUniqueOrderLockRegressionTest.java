@@ -5,18 +5,20 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.sunm2n.pay.concurrency.OrderLockMatrix.Expect;
 import com.sunm2n.pay.payment.application.IdempotentCancelCoordinator;
 import com.sunm2n.pay.payment.application.PaymentService;
+import com.sunm2n.pay.payment.domain.Payment;
 import com.sunm2n.pay.payment.domain.PaymentMethod;
 import com.sunm2n.pay.payment.domain.exception.OrderNotFoundException;
 import com.sunm2n.pay.support.AbstractIntegrationTest;
 import com.sunm2n.pay.support.BulkPaymentFixture;
 import com.sunm2n.pay.support.ConcurrencyGate;
 import com.sunm2n.pay.support.ConcurrentRunner;
+import com.sunm2n.pay.support.ConcurrentRunner.Running;
+import com.sunm2n.pay.support.HeldRun;
 import com.sunm2n.pay.support.LockWaitProbe;
 import com.sunm2n.pay.support.LockWaitProbe.LockCount;
 import com.sunm2n.pay.support.LockWaitProbe.RecordLock;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -108,37 +110,38 @@ class CompositeUniqueOrderLockRegressionTest extends AbstractIntegrationTest {
     String database = jdbcTemplate.queryForObject("SELECT DATABASE()", String.class);
     AtomicReference<List<RecordLock>> leaderLocks = new AtomicReference<>();
 
-    concurrencyGate.armHold(ConcurrencyGate.ORDER_LOCKED);
-    CompletableFuture<ConcurrentRunner.Results<Object>> leader =
-        CompletableFuture.supplyAsync(
-            () ->
-                ConcurrentRunner.run(
-                    1,
-                    () ->
-                        coordinator.cancelByOrder(
-                            OrderLockMatrix.A, null, "order-50-none", 1_000L, null)));
-    CompletableFuture<Object> inGap;
-    try {
-      concurrencyGate.awaitArrival(ConcurrencyGate.ORDER_LOCKED);
-      long trxId = LockWaitProbe.soleHolder(database, "payment");
-      leaderLocks.set(LockWaitProbe.recordLocksOf(database, "payment", trxId));
-      System.out.println("[S6 V7 없는 주문 락] " + leaderLocks.get());
+    AtomicReference<Running<Payment>> inGap = new AtomicReference<>();
 
-      // 다른 가맹점의 생성은 이 갭 밖이다. 선행이 붙잡힌 채로 끝난다.
-      paymentService.create(OrderLockMatrix.B, "order-80-new", 10_000L, PaymentMethod.CARD, null);
-      inGap =
-          CompletableFuture.supplyAsync(
-              () ->
-                  paymentService.create(
-                      OrderLockMatrix.A, "order-50-new", 10_000L, PaymentMethod.CARD, null));
-      LockWaitProbe.awaitWaiters(database, "payment", 1);
-      assertThat(inGap).as("같은 갭에 들어가는 생성은 대기 중이다").isNotDone();
-    } finally {
-      concurrencyGate.release(ConcurrencyGate.ORDER_LOCKED);
-    }
+    ConcurrentRunner.Results<Object> leader =
+        HeldRun.run(
+            concurrencyGate,
+            ConcurrencyGate.ORDER_LOCKED,
+            1,
+            () -> coordinator.cancelByOrder(OrderLockMatrix.A, null, "order-50-none", 1_000L, null),
+            side -> {
+              long trxId = LockWaitProbe.soleHolder(database, "payment");
+              leaderLocks.set(LockWaitProbe.recordLocksOf(database, "payment", trxId));
+              System.out.println("[S6 V7 없는 주문 락] " + leaderLocks.get());
 
-    assertThat(leader.join().failures()).singleElement().isInstanceOf(OrderNotFoundException.class);
-    assertThat(inGap.join()).as("선행이 끝나면 생성된다").isNotNull();
+              // 다른 가맹점의 생성은 이 갭 밖이다. 선행이 붙잡힌 채로 끝난다.
+              paymentService.create(
+                  OrderLockMatrix.B, "order-80-new", 10_000L, PaymentMethod.CARD, null);
+              // 같은 갭의 생성은 선행이 끝날 때까지 막힌다. 러너로 보내 헬퍼가 종료를 확인한다
+              inGap.set(
+                  side.start(
+                      () ->
+                          paymentService.create(
+                              OrderLockMatrix.A,
+                              "order-50-new",
+                              10_000L,
+                              PaymentMethod.CARD,
+                              null)));
+              LockWaitProbe.awaitWaiters(database, "payment", 1);
+              assertThat(inGap.get().isDone()).as("같은 갭에 들어가는 생성은 대기 중이다").isFalse();
+            });
+
+    assertThat(leader.failures()).singleElement().isInstanceOf(OrderNotFoundException.class);
+    assertThat(inGap.get().await().successes()).as("선행이 끝나면 생성된다").singleElement().isNotNull();
     assertThat(leaderLocks.get())
         .as("잠긴 것은 레코드가 아니라 A+1 첫 엔트리 앞의 갭 하나다")
         .singleElement()

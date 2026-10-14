@@ -17,6 +17,7 @@ import java.time.Duration;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.CannotAcquireLockException;
 import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -131,6 +132,9 @@ class LockWaitTimeoutObservationTest extends AbstractIntegrationTest {
 
         assertThat(waited).as("세션 설정이 JPA 조회의 커넥션에 적용됐다").isLessThan(UPPER_BOUND);
         assertThat(thrown).isInstanceOf(PessimisticLockingFailureException.class);
+        assertThat(thrown)
+            .as("Hibernate 의 번역 경로 - JdbcTemplate 테스트와 타입이 갈린다")
+            .isNotInstanceOf(CannotAcquireLockException.class);
         assertThat(MySqlLockErrors.isLockWaitTimeout(thrown)).isTrue();
         assertThat(MySqlLockErrors.isDeadlock(thrown)).as("재시도 조건(1213)에 걸리지 않는다").isFalse();
       } finally {
@@ -174,6 +178,9 @@ class LockWaitTimeoutObservationTest extends AbstractIntegrationTest {
         System.out.printf("[S4 1205/JdbcTemplate] %s%n", thrown.getClass().getName());
 
         assertThat(thrown).isInstanceOf(PessimisticLockingFailureException.class);
+        assertThat(thrown)
+            .as("SQLExceptionSubclassTranslator 의 번역 경로 (docs/phase1/S4.md 5.3)")
+            .isInstanceOf(CannotAcquireLockException.class);
         assertThat(MySqlLockErrors.isLockWaitTimeout(thrown)).isTrue();
         assertThat(MySqlLockErrors.isDeadlock(thrown)).isFalse();
       } finally {

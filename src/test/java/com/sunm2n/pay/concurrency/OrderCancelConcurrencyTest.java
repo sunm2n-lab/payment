@@ -9,9 +9,9 @@ import com.sunm2n.pay.payment.domain.exception.CancelAmountExceededException;
 import com.sunm2n.pay.support.AbstractIntegrationTest;
 import com.sunm2n.pay.support.ConcurrencyGate;
 import com.sunm2n.pay.support.ConcurrentRunner;
+import com.sunm2n.pay.support.HeldRun;
 import com.sunm2n.pay.support.LockWaitProbe;
 import com.sunm2n.pay.support.Seeds;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -64,27 +64,21 @@ class OrderCancelConcurrencyTest extends AbstractIntegrationTest {
   @DisplayName("회귀 6 - 주문 기반 취소가 먼저 잠그면 paymentKey 취소는 기다렸다가 금액 초과로 끝난다")
   void orderCancelFirst() {
     AtomicInteger turn = new AtomicInteger();
-    concurrencyGate.armHold(ConcurrencyGate.ORDER_LOCKED);
-    CompletableFuture<ConcurrentRunner.Results<Object>> running =
-        CompletableFuture.supplyAsync(
-            () ->
-                ConcurrentRunner.run(
-                    2,
-                    () -> {
-                      if (turn.getAndIncrement() == 0) {
-                        return coordinator.cancelByOrder(merchantId, null, ORDER_ID, CANCEL, null);
-                      }
-                      concurrencyGate.awaitArrival(ConcurrencyGate.ORDER_LOCKED);
-                      return coordinator.cancel(merchantId, null, paymentKey, CANCEL, null);
-                    }));
-    concurrencyGate.awaitArrival(ConcurrencyGate.ORDER_LOCKED);
-    try {
-      LockWaitProbe.awaitWaiters(database, "payment", 1);
-    } finally {
-      concurrencyGate.release(ConcurrencyGate.ORDER_LOCKED);
-    }
+    ConcurrentRunner.Results<Object> results =
+        HeldRun.run(
+            concurrencyGate,
+            ConcurrencyGate.ORDER_LOCKED,
+            2,
+            () -> {
+              if (turn.getAndIncrement() == 0) {
+                return coordinator.cancelByOrder(merchantId, null, ORDER_ID, CANCEL, null);
+              }
+              concurrencyGate.awaitArrival(ConcurrencyGate.ORDER_LOCKED);
+              return coordinator.cancel(merchantId, null, paymentKey, CANCEL, null);
+            },
+            side -> LockWaitProbe.awaitWaiters(database, "payment", 1));
 
-    assertOnlyOneCancelled(running.join());
+    assertOnlyOneCancelled(results);
   }
 
   @Test

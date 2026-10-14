@@ -13,13 +13,13 @@ import com.sunm2n.pay.payment.domain.exception.CancelAmountExceededException;
 import com.sunm2n.pay.support.AbstractIntegrationTest;
 import com.sunm2n.pay.support.ConcurrencyGate;
 import com.sunm2n.pay.support.ConcurrentRunner;
+import com.sunm2n.pay.support.HeldRun;
 import com.sunm2n.pay.support.LockWaitProbe;
 import com.sunm2n.pay.support.Seeds;
 import com.sunm2n.pay.wallet.application.WalletService;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.Callable;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -84,11 +84,8 @@ class IdempotentCancelConcurrencyTest extends AbstractIntegrationTest {
   void concurrentSameKeyWaitsAndReplays() {
     String paymentKey = confirmedMoneyPayment("order-s5c-7");
 
-    concurrencyGate.armHold(ConcurrencyGate.KEY_CLAIMED);
-    CompletableFuture<ConcurrentRunner.Results<CancelOutcome>> running =
-        runAsync(2, () -> cancel(paymentKey, CANCEL));
-    releaseLeaderAfterWaiters(1);
-    ConcurrentRunner.Results<CancelOutcome> results = running.join();
+    ConcurrentRunner.Results<CancelOutcome> results =
+        runReleasingLeaderAfterWaiters(2, () -> cancel(paymentKey, CANCEL), 1);
 
     assertThat(results.failures()).isEmpty();
     assertThat(results.successes()).hasSize(2);
@@ -105,16 +102,14 @@ class IdempotentCancelConcurrencyTest extends AbstractIntegrationTest {
     String paymentKey = confirmedMoneyPayment("order-s5c-8");
     AtomicInteger turn = new AtomicInteger();
 
-    concurrencyGate.armHold(ConcurrencyGate.KEY_CLAIMED);
-    CompletableFuture<ConcurrentRunner.Results<CancelOutcome>> running =
-        runAsync(
+    ConcurrentRunner.Results<CancelOutcome> results =
+        runReleasingLeaderAfterWaiters(
             2,
             () ->
                 turn.getAndIncrement() == 0
                     ? cancel(paymentKey, EXCEEDING)
-                    : afterLeaderClaimed(() -> cancel(paymentKey, CANCEL)));
-    releaseLeaderAfterWaiters(1);
-    ConcurrentRunner.Results<CancelOutcome> results = running.join();
+                    : afterLeaderClaimed(() -> cancel(paymentKey, CANCEL)),
+            1);
 
     assertThat(results.failures())
         .as("선행만 실패한다")
@@ -231,16 +226,13 @@ class IdempotentCancelConcurrencyTest extends AbstractIntegrationTest {
   /** 회귀 10 의 배치. {@link UniqueKeyWaiterDeadlockObservationTest} 가 같은 배치를 5회 돌린다. */
   private ConcurrentRunner.Results<CancelOutcome> leaderRollsBackWithTwoWaiters(String paymentKey) {
     AtomicInteger turn = new AtomicInteger();
-    concurrencyGate.armHold(ConcurrencyGate.KEY_CLAIMED);
-    CompletableFuture<ConcurrentRunner.Results<CancelOutcome>> running =
-        runAsync(
-            3,
-            () ->
-                turn.getAndIncrement() == 0
-                    ? cancel(paymentKey, EXCEEDING)
-                    : afterLeaderClaimed(() -> cancel(paymentKey, CANCEL)));
-    releaseLeaderAfterWaiters(2);
-    return running.join();
+    return runReleasingLeaderAfterWaiters(
+        3,
+        () ->
+            turn.getAndIncrement() == 0
+                ? cancel(paymentKey, EXCEEDING)
+                : afterLeaderClaimed(() -> cancel(paymentKey, CANCEL)),
+        2);
   }
 
   private CancelOutcome cancel(String paymentKey, long amount) {
@@ -253,20 +245,15 @@ class IdempotentCancelConcurrencyTest extends AbstractIntegrationTest {
     return follower.call();
   }
 
-  /** 선행이 붙잡히고, 후속 {@code waiters} 명이 실제로 키 락을 기다리는 것을 확인한 뒤 선행을 풀어 준다. */
-  private void releaseLeaderAfterWaiters(int waiters) {
-    concurrencyGate.awaitArrival(ConcurrencyGate.KEY_CLAIMED);
-    try {
-      LockWaitProbe.awaitWaiters(database, "idempotency_key", waiters);
-    } finally {
-      concurrencyGate.release(ConcurrencyGate.KEY_CLAIMED);
-    }
-  }
-
-  /** 워커를 다른 스레드에서 돌린다. 테스트 스레드는 그동안 대기를 확인하고 선행을 풀어 줘야 한다. */
-  private static <T> CompletableFuture<ConcurrentRunner.Results<T>> runAsync(
-      int workers, Callable<T> task) {
-    return CompletableFuture.supplyAsync(() -> ConcurrentRunner.run(workers, task));
+  /** 선행이 키를 쥔 채 붙잡히고, 후속 {@code waiters} 명이 실제로 키 락을 기다리는 것을 확인한 뒤 선행을 풀어 준다. */
+  private <T> ConcurrentRunner.Results<T> runReleasingLeaderAfterWaiters(
+      int workers, Callable<T> task, int waiters) {
+    return HeldRun.run(
+        concurrencyGate,
+        ConcurrencyGate.KEY_CLAIMED,
+        workers,
+        task,
+        side -> LockWaitProbe.awaitWaiters(database, "idempotency_key", waiters));
   }
 
   /** 다른 트랜잭션이 결제 행을 잠근 채 대기자가 생긴 뒤에도 {@code hold} 만큼 더 쥐고 있다. */

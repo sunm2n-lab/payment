@@ -11,12 +11,12 @@ import com.sunm2n.pay.payment.domain.exception.CancelAmountExceededException;
 import com.sunm2n.pay.support.AbstractIntegrationTest;
 import com.sunm2n.pay.support.ConcurrencyGate;
 import com.sunm2n.pay.support.ConcurrentRunner;
+import com.sunm2n.pay.support.HeldRun;
 import com.sunm2n.pay.support.LockWaitProbe;
 import com.sunm2n.pay.support.Seeds;
 import com.sunm2n.pay.wallet.application.WalletService;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -68,26 +68,19 @@ class UniqueKeyWaiterDeadlockObservationTest extends AbstractIntegrationTest {
       AtomicInteger turn = new AtomicInteger();
 
       concurrencyGate.reset();
-      concurrencyGate.armHold(ConcurrencyGate.KEY_CLAIMED);
-      CompletableFuture<ConcurrentRunner.Results<CancelOutcome>> running =
-          CompletableFuture.supplyAsync(
-              () ->
-                  ConcurrentRunner.run(
-                      3,
-                      () -> {
-                        if (turn.getAndIncrement() == 0) {
-                          return coordinator.cancel(merchantId, key, paymentKey, 20_000L, "관측");
-                        }
-                        concurrencyGate.awaitArrival(ConcurrencyGate.KEY_CLAIMED);
-                        return coordinator.cancel(merchantId, key, paymentKey, 3_000L, "관측");
-                      }));
-      concurrencyGate.awaitArrival(ConcurrencyGate.KEY_CLAIMED);
-      try {
-        LockWaitProbe.awaitWaiters(database, "idempotency_key", 2);
-      } finally {
-        concurrencyGate.release(ConcurrencyGate.KEY_CLAIMED);
-      }
-      ConcurrentRunner.Results<CancelOutcome> results = running.join();
+      ConcurrentRunner.Results<CancelOutcome> results =
+          HeldRun.run(
+              concurrencyGate,
+              ConcurrencyGate.KEY_CLAIMED,
+              3,
+              () -> {
+                if (turn.getAndIncrement() == 0) {
+                  return coordinator.cancel(merchantId, key, paymentKey, 20_000L, "관측");
+                }
+                concurrencyGate.awaitArrival(ConcurrencyGate.KEY_CLAIMED);
+                return coordinator.cancel(merchantId, key, paymentKey, 3_000L, "관측");
+              },
+              side -> LockWaitProbe.awaitWaiters(database, "idempotency_key", 2));
 
       long deadlocks = results.failures().stream().filter(MySqlLockErrors::isDeadlock).count();
       distribution.add(

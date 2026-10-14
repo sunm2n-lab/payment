@@ -9,6 +9,7 @@ import com.sunm2n.pay.payment.infrastructure.card.FakeCardApprovalClient;
 import com.sunm2n.pay.support.BulkPaymentFixture;
 import com.sunm2n.pay.support.ConcurrencyGate;
 import com.sunm2n.pay.support.ConcurrentRunner;
+import com.sunm2n.pay.support.HeldRun;
 import com.sunm2n.pay.support.LockWaitProbe;
 import com.sunm2n.pay.support.LockWaitProbe.LockCount;
 import java.time.Duration;
@@ -16,11 +17,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.LongStream;
 import org.springframework.jdbc.core.JdbcTemplate;
 
@@ -117,19 +118,20 @@ final class OrderLockMatrix {
    * @param observe 선행을 붙잡아 둔 채 실행할 추가 관측. 선행의 트랜잭션 id 를 받는다
    */
   List<LockCount> leaderLocks(TrxObservation observe) {
-    gate.armHold(ConcurrencyGate.ORDER_LOCKED);
-    CompletableFuture<ConcurrentRunner.Results<Object>> leader =
-        CompletableFuture.supplyAsync(() -> ConcurrentRunner.run(1, this::lead));
-    try {
-      gate.awaitArrival(ConcurrencyGate.ORDER_LOCKED);
-      long trxId = LockWaitProbe.soleHolder(database, "payment");
-      List<LockCount> locks = LockWaitProbe.locksOf(database, "payment", trxId);
-      observe.at(trxId);
-      return locks;
-    } finally {
-      gate.release(ConcurrencyGate.ORDER_LOCKED);
-      assertThat(leader.join().failures()).isEmpty();
-    }
+    AtomicReference<List<LockCount>> locks = new AtomicReference<>();
+    ConcurrentRunner.Results<Object> leader =
+        HeldRun.run(
+            gate,
+            ConcurrencyGate.ORDER_LOCKED,
+            1,
+            this::lead,
+            side -> {
+              long trxId = LockWaitProbe.soleHolder(database, "payment");
+              locks.set(LockWaitProbe.locksOf(database, "payment", trxId));
+              observe.at(trxId);
+            });
+    assertThat(leader.failures()).isEmpty();
+    return locks.get();
   }
 
   /** 행 {@code no} 를 실행하고 기대와 같은지 확인한다. */
@@ -140,41 +142,35 @@ final class OrderLockMatrix {
     AtomicInteger finishedWhileHeld = new AtomicInteger();
     CountDownLatch followersDone = new CountDownLatch(followers.size());
 
-    gate.armHold(ConcurrencyGate.ORDER_LOCKED);
-    CompletableFuture<ConcurrentRunner.Results<Object>> running =
-        CompletableFuture.supplyAsync(
-            () ->
-                ConcurrentRunner.run(
-                    1 + followers.size(),
-                    () -> {
-                      int me = turn.getAndIncrement();
-                      if (me == 0) {
-                        return lead();
-                      }
-                      gate.awaitArrival(ConcurrencyGate.ORDER_LOCKED);
-                      try {
-                        return followers.get(me - 1).call();
-                      } finally {
-                        if (!released.get()) {
-                          finishedWhileHeld.incrementAndGet();
-                        }
-                        followersDone.countDown();
-                      }
-                    }));
-
-    try {
-      gate.awaitArrival(ConcurrencyGate.ORDER_LOCKED);
-      if (expect == Expect.WAIT) {
-        LockWaitProbe.awaitWaiters(database, "payment", followers.size());
-      } else {
-        awaitQuietly(followersDone);
-      }
-    } finally {
-      released.set(true);
-      gate.release(ConcurrencyGate.ORDER_LOCKED);
-    }
-
-    ConcurrentRunner.Results<Object> results = running.join();
+    ConcurrentRunner.Results<Object> results =
+        HeldRun.run(
+            gate,
+            ConcurrencyGate.ORDER_LOCKED,
+            1 + followers.size(),
+            () -> {
+              int me = turn.getAndIncrement();
+              if (me == 0) {
+                return lead();
+              }
+              gate.awaitArrival(ConcurrencyGate.ORDER_LOCKED);
+              try {
+                return followers.get(me - 1).call();
+              } finally {
+                if (!released.get()) {
+                  finishedWhileHeld.incrementAndGet();
+                }
+                followersDone.countDown();
+              }
+            },
+            side -> {
+              if (expect == Expect.WAIT) {
+                LockWaitProbe.awaitWaiters(database, "payment", followers.size());
+              } else {
+                awaitQuietly(followersDone);
+              }
+              // 헬퍼가 이 블록 뒤에 선행을 풀어 준다. 그 전에 표시해야 해제 뒤에 끝난 후속을 세지 않는다
+              released.set(true);
+            });
     assertThat(results.failures()).as("행 %d - 선행과 후속이 모두 성공한다", no).isEmpty();
     assertThat(finishedWhileHeld.get())
         .as("행 %d - 선행이 붙잡힌 동안 끝난 후속 수 (%s)", no, expect)

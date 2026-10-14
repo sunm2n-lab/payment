@@ -5,8 +5,14 @@ import java.util.Optional;
 /**
  * 멱등키 저장소. 키의 범위는 {@code (merchantId, operation)} 이다.
  *
- * <p>JDBC 전용이고 JPA 엔티티를 두지 않는다 ({@code docs/plan/S5.md} 2절). 쓰기는 호출 즉시 SQL 로 나가야 한다 — 영속성 컨텍스트에
- * 쌓였다가 flush 때 나가면 "키를 먼저 쓴다" 는 순서가 코드에만 있고 SQL 에는 없다.
+ * <p>JDBC 전용이고 JPA 엔티티를 두지 않는다 ({@code docs/phase1/S5.md} 5절). JPA 라서 INSERT 가 늦어지는 것은 아니다 — {@code
+ * id} 가 AUTO_INCREMENT 라 엔티티로 매핑해도 IDENTITY 전략이 되고 {@code save} 가 곧 INSERT 다. 엔티티를 두지 않는 이유는 둘이다.
+ *
+ * <ol>
+ *   <li>테이블이 V4 에서 생기므로, 엔티티로 매핑하면 {@code ddl-auto: validate} 가 과거(V2) 컨텍스트의 기동을 막는다
+ *   <li>선점·완료의 SQL, 갱신 건수, 예외가 나는 시점을 명시적으로 다룬다. {@link #claim} 은 세션 변수 변경·INSERT·복원을 감싸고 1062·1205
+ *       를 그 자리에서 가르며, {@link #complete} 는 갱신 건수를 확인한다
+ * </ol>
  *
  * <p>인터페이스로 두는 이유는 테스트의 동기화 지점이다. {@code ConcurrencyGateConfig} 가 다른 리포지터리처럼 인터페이스 프록시로 감싼다.
  *

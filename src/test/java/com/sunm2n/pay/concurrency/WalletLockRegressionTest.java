@@ -74,6 +74,7 @@ class WalletLockRegressionTest extends AbstractIntegrationTest {
     ConcurrentRunner.Results<Payment> results =
         ConcurrentRunner.run(WORKERS, () -> confirm(paymentKeys.poll()));
 
+    concurrencyGate.assertTripped(ConcurrencyGate.PAYMENT_READ);
     assertThat(results.successCount()).isEqualTo(3);
     assertThat(results.failuresOf(InsufficientBalanceException.class))
         .as("네 번째는 앞선 세 건이 커밋한 잔액을 보고 검사한다")
@@ -108,6 +109,7 @@ class WalletLockRegressionTest extends AbstractIntegrationTest {
                     ? walletService.charge(Seeds.MEMBER_ID_1, CHARGE_AMOUNT)
                     : confirm(paymentKey));
 
+    concurrencyGate.assertTripped(ConcurrencyGate.WALLET_LOCK_ATTEMPT);
     assertThat(results.failures()).isEmpty();
     assertThat(results.successCount()).isEqualTo(2);
 
@@ -130,6 +132,7 @@ class WalletLockRegressionTest extends AbstractIntegrationTest {
     ConcurrentRunner.Results<Payment> results =
         ConcurrentRunner.run(SAME_PAYMENT_WORKERS, () -> confirm(paymentKey));
 
+    concurrencyGate.assertTripped(ConcurrencyGate.PAYMENT_READ);
     assertThat(results.successCount()).as("지갑을 잠그게 됐어도 S1 의 판정은 그대로다").isEqualTo(1);
     assertThat(results.failuresOf(InvalidPaymentStatusException.class))
         .as("나머지는 CAS 에서 0 건 갱신으로 탈락한다")

@@ -3,6 +3,7 @@ package com.sunm2n.pay.schema;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.sunm2n.pay.support.AbstractV4SchemaTest;
+import com.sunm2n.pay.support.TestIsolation;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -47,5 +48,13 @@ class V4SchemaContextTest extends AbstractV4SchemaTest {
   @DisplayName("키 컬럼은 ascii_bin 이다 - 대소문자를 구분한다")
   void keyColumnIsCaseSensitive() {
     assertThat(IdempotencyKeySchema.keyCollation(jdbcTemplate)).isEqualTo("ascii_bin");
+  }
+
+  @Test
+  @DisplayName("세션 격리 수준은 REPEATABLE-READ 다")
+  void sessionIsolationIsRepeatableRead() {
+    String isolation = jdbcTemplate.queryForObject("SELECT @@transaction_isolation", String.class);
+
+    assertThat(isolation).isEqualTo(TestIsolation.REPEATABLE_READ.sessionValue());
   }
 }

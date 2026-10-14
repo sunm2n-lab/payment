@@ -93,9 +93,20 @@ public class ConcurrencyGate {
 
   private final Map<String, Point> gates = new ConcurrentHashMap<>();
 
+  private final Duration timeout;
+
+  public ConcurrencyGate() {
+    this(TIMEOUT);
+  }
+
+  /** 대기 상한을 바꾼다. 상한에 걸리는 경로를 검사하는 지원 코드 테스트용이다. */
+  ConcurrencyGate(Duration timeout) {
+    this.timeout = timeout;
+  }
+
   /** 게이트를 무장한다. {@code parties} 개의 스레드가 모여야 통과한다. */
   public void arm(String name, int parties) {
-    gates.put(name, new Gate(name, parties));
+    gates.put(name, new Gate(name, parties, timeout));
   }
 
   /**
@@ -105,7 +116,7 @@ public class ConcurrencyGate {
    * 지점까지 보유한 DB 락이 상대의 경로와 <b>겹치면 안 된다.</b> 겹치면 상대가 락에 막혀 release 에 도달하지 못하고 상한에 걸려 실패한다.
    */
   public void armHold(String name) {
-    gates.put(name, new Hold(name));
+    gates.put(name, new Hold(name, timeout));
   }
 
   /** hold 로 무장한 지점에 스레드가 붙잡힐 때까지 기다린다. 상한 안에 아무도 오지 않으면 실패한다. */
@@ -137,6 +148,19 @@ public class ConcurrencyGate {
     throw new IllegalStateException("'" + name + "' 은 barrier 로 무장되지 않았다");
   }
 
+  /**
+   * barrier 로 무장한 지점이 실제로 열렸는지 단언한다. 실행이 끝난 뒤, 결과 단언보다 <b>먼저</b> 부른다.
+   *
+   * <p>참가자가 일부만 도착하면 도착한 쪽이 상한에서 실패하므로 이미 드러난다. 이 단언이 잡는 것은 <b>아무도 도착하지 않은</b> 경우다 — 잠금 조회가 빠져 지점을
+   * 지나지 않으면 워커는 그냥 지나가고, 결과는 동기화가 아니라 우연한 경합에서 나온다 ({@code docs/plan/S7_PREP.md} 4.4).
+   */
+  public void assertTripped(String name) {
+    if (trippedAtNanos(name).isEmpty()) {
+      throw new AssertionError(
+          "게이트 '" + name + "' 가 열리지 않았다 - 참가자가 지점에 도착하지 않았다. 결과는 동기화 없이 나온 것이다");
+    }
+  }
+
   /** 무장된 게이트라면 다른 참가자를 기다린다. 무장 전이거나 이미 통과한 스레드면 그냥 돌아간다. */
   public void pass(String name) {
     Point gate = gates.get(name);
@@ -166,12 +190,14 @@ public class ConcurrencyGate {
   private static final class Gate implements Point {
 
     private final String name;
+    private final Duration timeout;
     private final CyclicBarrier barrier;
     private final Set<Long> arrived = ConcurrentHashMap.newKeySet();
     private final AtomicLong trippedAt = new AtomicLong();
 
-    private Gate(String name, int parties) {
+    private Gate(String name, int parties, Duration timeout) {
       this.name = name;
+      this.timeout = timeout;
       this.barrier = new CyclicBarrier(parties, () -> trippedAt.set(System.nanoTime()));
     }
 
@@ -186,10 +212,10 @@ public class ConcurrencyGate {
         return;
       }
       try {
-        barrier.await(TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
+        barrier.await(timeout.toMillis(), TimeUnit.MILLISECONDS);
       } catch (TimeoutException e) {
         throw new IllegalStateException(
-            "게이트 '" + name + "' 에서 " + TIMEOUT.toSeconds() + "초 안에 참가자가 모이지 않았다", e);
+            "게이트 '" + name + "' 에서 " + timeout.toSeconds() + "초 안에 참가자가 모이지 않았다", e);
       } catch (BrokenBarrierException e) {
         throw new IllegalStateException("게이트 '" + name + "' 의 다른 참가자가 먼저 실패했다", e);
       } catch (InterruptedException e) {
@@ -207,12 +233,14 @@ public class ConcurrencyGate {
   private static final class Hold implements Point {
 
     private final String name;
+    private final Duration timeout;
     private final AtomicBoolean captured = new AtomicBoolean();
     private final CountDownLatch arrival = new CountDownLatch(1);
     private final CountDownLatch released = new CountDownLatch(1);
 
-    private Hold(String name) {
+    private Hold(String name, Duration timeout) {
       this.name = name;
+      this.timeout = timeout;
     }
 
     @Override
@@ -236,9 +264,9 @@ public class ConcurrencyGate {
 
     private void await(CountDownLatch latch, String reason) {
       try {
-        if (!latch.await(TIMEOUT.toMillis(), TimeUnit.MILLISECONDS)) {
+        if (!latch.await(timeout.toMillis(), TimeUnit.MILLISECONDS)) {
           throw new IllegalStateException(
-              "hold '" + name + "' 가 " + TIMEOUT.toSeconds() + "초 안에 " + reason);
+              "hold '" + name + "' 가 " + timeout.toSeconds() + "초 안에 " + reason);
         }
       } catch (InterruptedException e) {
         Thread.currentThread().interrupt();

@@ -19,6 +19,6 @@ public abstract class AbstractV5SchemaTest extends AbstractDatabaseTest {
 
   @DynamicPropertySource
   static void v5Schema(DynamicPropertyRegistry registry) {
-    PastSchemaDatabase.register(registry, "payment_v5", "5");
+    PastSchemaDatabase.register(registry, "payment_v5", "5", TestIsolation.REPEATABLE_READ);
   }
 }
