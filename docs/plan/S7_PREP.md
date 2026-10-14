@@ -265,16 +265,16 @@ S7 의 코드를 쓰기 전에 아래 표의 **RC 예측**과 **근거**를 채�
 
 | # | 실험 | 측정 조건 | RR 실측 | RC 예측 | 근거 |
 |---|---|---|---|---|---|
-| 1a | S5 2차 **최소 실험** — 두 세션이 없는 키를 `FOR UPDATE` 로 찾은 뒤 각자 INSERT (`GapLockDeadlockReproductionTest` ①) | `payment_v4`. 1213 발생 여부, 남은 키 행 수 | 한쪽 1213 (`phase1/S5.md` 3.3) | | |
-| 1b | S5 2차 **서비스 적용** — 같은 키 취소 2건 (`GapLockDeadlockReproductionTest` ②) | `payment_v4`. 성공 수, 1213 수, 취소 이력 수, 키 행 수 | 성공 1, 1213 1, 취소 1, 키 1 | | |
-| 2a | S5 5.6 — 선행이 롤백하고 대기자가 둘 (`UniqueKeyWaiterDeadlockObservationTest`) | 최신 스키마(unique). 회차마다 성공 수, 1213 수 | 성공 1, 1213 1 (5회 모두) | | |
-| 2b | S4 재현 1 — 원장 INSERT 뒤 지갑 UPDATE 둘 (`FkPromotionDeadlockReproductionTest`) | 최신 스키마(FK). 1213 발생 여부 | 한쪽 1213 | | |
-| 3a | S6 1 단계 — 선행이 **쥔 락** | `payment_v5`. 선행의 잠금 조회 **반환 직후**, 선행 트랜잭션의 `payment` RECORD 락 수 | 10,076 (`phase1/S6.md` 3.3) | | |
-| 3b | S6 1 단계 — 후속의 **대기 여부** | `payment_v5`. 대기 행렬 1~11번 각각 대기 / 통과 | 1~9번 대기, 10번 통과, 11번 대기자 7 | | |
-| 3c | S6 2 단계 — 같은 가맹점의 다른 주문, 이웃 가맹점의 생성 | `payment_v6`. 행렬 2·4·7·9번 | 넷 다 대기 | | |
-| 3d | S6 없는 주문을 잠그며 찾기 | 최신 스키마. 선행의 락, 같은 자리의 생성이 대기하는가 | `X,GAP` 1개, 대기 (`phase1/S6.md` 3.7) | | |
-| 4a | S1 — CAS 탈락자의 재조회 값 | 0건 갱신 뒤 **같은 트랜잭션**에서 `JdbcTemplate` 스칼라 조회. JPA 엔티티로 읽지 않는다 | `READY` (`DuplicateConfirmRegressionTest`) | | |
-| 4b | S1 — CAS 탈락자가 쥔 락 | 0건 갱신 **직후**, 탈락자 트랜잭션의 `payment` RECORD 락 | **측정한 적 없다** (11절) | RR: / RC: | |
+| 1a | S5 2차 **최소 실험** — 두 세션이 없는 키를 `FOR UPDATE` 로 찾은 뒤 각자 INSERT (`GapLockDeadlockReproductionTest` ①) | `payment_v4`. 1213 발생 여부, 남은 키 행 수 | 한쪽 1213 (`phase1/S5.md` 3.3) | 1213 없이 둘 다 성공, 같은 키 행 2개 | 없는 키 검색의 갭락이 사라지고, V4에는 중복을 막는 unique 제약이 없다 |
+| 1b | S5 2차 **서비스 적용** — 같은 키 취소 2건 (`GapLockDeadlockReproductionTest` ②) | `payment_v4`. 성공 수, 1213 수, 취소 이력 수, 키 행 수 | 성공 1, 1213 1, 취소 1, 키 1 | 성공 2, 1213 0, 취소 2, 키 2 | 둘 다 키가 없음을 확인한다. payment 락이 취소를 직렬화해도 키를 다시 검사하지 않으며, 두 번 취소할 잔액도 충분하다 |
+| 2a | S5 5.6 — 선행이 롤백하고 대기자가 둘 (`UniqueKeyWaiterDeadlockObservationTest`) | 최신 스키마(unique). 회차마다 성공 수, 1213 수 | 성공 1, 1213 1 (5회 모두) | 대기자 둘 중 성공 1, 1213 1이 유지될 것으로 예상 | unique 중복 검사의 락은 남는다. 선행 롤백 뒤 대기자들이 공유 락에서 배타 락으로 전환하려는 충돌도 남을 것으로 본다 |
+| 2b | S4 재현 1 — 원장 INSERT 뒤 지갑 UPDATE 둘 (`FkPromotionDeadlockReproductionTest`) | 최신 스키마(FK). 1213 발생 여부 | 한쪽 1213 | 한쪽 1213 유지 예상 | FK 검사로 같은 부모에 잡은 S 락과, 이후 UPDATE의 X 락 요청이 만드는 순환은 남는다 |
+| 3a | S6 1 단계 — 선행이 **쥔 락** | `payment_v5`. 선행의 잠금 조회 **반환 직후**, 선행 트랜잭션의 `payment` RECORD 락 수 | 10,076 (`phase1/S6.md` 3.3) | 모르겠다 |  |
+| 3b | S6 1 단계 — 후속의 **대기 여부** | `payment_v5`. 대기 행렬 1~11번 각각 대기 / 통과 | 1~9번 대기, 10번 통과, 11번 대기자 7 | 모르겠다 |  |
+| 3c | S6 2 단계 — 같은 가맹점의 다른 주문, 이웃 가맹점의 생성 | `payment_v6`. 행렬 2·4·7·9번 | 넷 다 대기 | 모르겠다 |  |
+| 3d | S6 없는 주문을 잠그며 찾기 | 최신 스키마. 선행의 락, 같은 자리의 생성이 대기하는가 | `X,GAP` 1개, 대기 (`phase1/S6.md` 3.7) | 검색으로 남는 payment RECORD 락 0, 같은 갭의 생성 통과 예상 | 없는 주문 검색의 갭락이 사라진다. 테이블의 의도 락까지 없어진다는 뜻은 아니다 |
+| 4a | S1 — CAS 탈락자의 재조회 값 | 0건 갱신 뒤 **같은 트랜잭션**에서 `JdbcTemplate` 스칼라 조회. JPA 엔티티로 읽지 않는다 | `READY` (`DuplicateConfirmRegressionTest`) | 재조회는 DONE, CAS 갱신 건수는 여전히 0 | 승자는 이미 커밋했다. RC의 일반 조회는 새 스냅샷을 사용한다 |
+| 4b | S1 — CAS 탈락자가 쥔 락 | 0건 갱신 **직후**, 탈락자 트랜잭션의 `payment` RECORD 락 | **측정한 적 없다** (11절) | RR: 모르겠다 / RC: 모르겠다 |  |
 
 ## 8. 작업 순서 (커밋 단위, 커밋마다 green)
 
